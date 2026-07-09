@@ -1,0 +1,28 @@
+# 1. 编译生成的可执行文件和库 (通常体积最大)
+*.exe
+*.dll
+*.obj
+*.o
+*.lib
+*.pdb
+
+# 2. 编译输出目录
+build/
+bin/
+out/
+
+# 3. 编辑器和系统生成的隐藏缓存
+.vscode/
+.vs/
+.DS_Store
+Thumbs.db
+
+# Python 缓存文件
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 压缩包文件 (防止不小心把整个项目的 zip 也传上去)
+*.zip
+*.tar.gz
+*.rar
