@@ -37,7 +37,7 @@ async def stream_solve(
         try:
             with get_db_connection() as conn:
                 user = conn.execute(
-                    "SELECT * FROM accounts WHERE student_id = ?",
+                    "SELECT * FROM campus_config WHERE student_id = ?", # 👈 将 accounts 换成 campus_config
                     (student_id,),
                 ).fetchone()
 

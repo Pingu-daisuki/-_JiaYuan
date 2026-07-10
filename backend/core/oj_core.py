@@ -134,11 +134,30 @@ def _call_openai_compatible(prompt, api_key, model, base_url):
 
 
 def call_llm(prompt, api_key, model="gemini-1.5-flash", base_url="", model_type="cloud"):
-    if not base_url:
-        text = _call_gemini(prompt, api_key, model)
-    elif "generativelanguage.googleapis.com" in base_url or model.startswith("gemini-"):
+    model_lower = model.lower()
+    url_lower = base_url.lower() if base_url else ""
+    
+    # 1. 明确是 OpenAI 兼容格式 (如用户强制加了 openai 路径，或者走第三方中转)
+    if url_lower and "openai" in url_lower:
+        text = _call_openai_compatible(prompt, api_key, model, base_url)
+        
+    # 2. 明确是 Gemini 原生 (明确填了 google 域名，或者没填 URL 但模型是 gemini)
+    elif "generativelanguage.googleapis.com" in url_lower or (not base_url and "gemini" in model_lower):
         text = _call_gemini(prompt, api_key, model, base_url)
+        
+    # 3. 处理第三方模型 (DeepSeek, GLM, Qwen 等)
     else:
+        # 如果用户忘记填 base_url，自动补全国内官方标准的 OpenAI 兼容地址
+        if not base_url:
+            if "deepseek" in model_lower or "ds" in model_lower:
+                base_url = "https://api.deepseek.com"
+            elif "glm" in model_lower or "zhipu" in model_lower:
+                base_url = "https://open.bigmodel.cn/api/paas/v4"
+            else:
+                # 如果既不是 gemini/ds/glm 且没填 url，直接抛出清晰的错误提示
+                raise ValueError(f"未配置 {model} 的 Base URL，请在设置中填写正确的请求地址。")
+                
+        # 统统走 OpenAI 兼容协议
         text = _call_openai_compatible(prompt, api_key, model, base_url)
 
     return _strip_markdown_fence(text)
