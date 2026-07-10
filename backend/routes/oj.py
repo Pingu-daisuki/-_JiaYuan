@@ -1,79 +1,148 @@
+import asyncio
+import json
+import os
+import traceback
+
+import urllib3
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-import asyncio
-import re
-import requests
+
 from core.db import get_db_connection
-from core.oj_core import OJClient, build_prompt
+from core.oj_core import OJClient, STATUS_NAME, build_prompt, call_llm
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 router = APIRouter()
 
-# 判题结果映射
-STATUS_NAME = {
-    0: "Accepted ✅", -1: "Wrong Answer ❌", -2: "Compile Error ⚠️",
-    1: "CPU Time Limit Exceeded ❌", 2: "Real Time Limit Exceeded ❌",
-    3: "Memory Limit Exceeded ❌", 4: "Runtime Error ❌", 5: "System Error ⚠️",
-    8: "Partial Accepted 🟡"
-}
+CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
+
+
+def sse(message):
+    return f"data: {message}\n\n"
+
 
 @router.get("/stream_solve")
-async def stream_solve(contest_id: str, contest_password: str = ""):
-    conn = get_db_connection()
-    config = conn.execute("SELECT * FROM oj_config LIMIT 1").fetchone()
-    conn.close()
-
+async def stream_solve(
+    contest_id: str,
+    student_id: str,
+    model: str,
+    contest_password: str = "",
+    interval: int = 5,
+    api_key: str = "",
+    base_url: str = "",
+    model_id: str = "",
+    model_type: str = "cloud",
+):
     async def generate_log():
-        if not config:
-            yield "data: [错误] ❌ 未检测到配置，请先保存信息。\n\n"
-            return
-        
-        client = OJClient(config["username"], config["password"])
-        yield "data: [系统] 🚀 自动刷题引擎启动...\n\n"
-
         try:
+            with get_db_connection() as conn:
+                user = conn.execute(
+                    "SELECT * FROM accounts WHERE student_id = ?",
+                    (student_id,),
+                ).fetchone()
+
+            if not user:
+                yield sse("[错误] 未在数据库中找到该身份档案，请确认是否已保存账号。")
+                return
+
+            llm_api_key = api_key
+            language = "C++"
+            if os.path.exists(CONFIG_PATH):
+                with open(CONFIG_PATH, "r", encoding="utf-8") as file:
+                    local_config = json.load(file)
+                llm_api_key = llm_api_key or local_config.get("llm_api_key", "")
+                language = local_config.get("language", "C++")
+
+            if not llm_api_key and not base_url:
+                yield sse("[错误] 未找到大模型 API Key，请先在设置页保存模型配置。")
+                return
+
+            llm_model = model_id or model
+
+            client = OJClient(user["student_id"], user["password"])
+
+            yield sse("[系统] 正在验证统一身份认证...")
             await asyncio.to_thread(client.login)
-            yield f"data: [认证] ✅ 登录成功: {config['username']}\n\n"
-            
-            title = await asyncio.to_thread(client.enter_contest, contest_id, contest_password)
-            yield f"data: [实验] ✅ 成功进入: {title}\n\n"
+            yield sse("[认证] 身份认证登录成功。")
+
+            yield sse(f"[系统] 正在检索实验编号 [{contest_id}]...")
+            contest_title = await asyncio.to_thread(client.enter_contest, contest_id, contest_password)
+            yield sse(f"[实验] 已进入实验：{contest_title or contest_id}")
 
             problems = await asyncio.to_thread(client.get_problem_list, contest_id)
-            
-            for p in problems:
-                if p.get("my_status") == 0: continue
+            yield sse(f"[系统] 成功加载题目列表，共 {len(problems)} 道题。")
 
-                pid = p.get("id") or p.get("_id")
-                yield f"data: [处理] ⚔️ 开始攻破: [{pid}] {p.get('title')}\n\n"
-                
-                # 动态生成 prompt
-                prompt = build_prompt(p, config["language"])
+            for problem in problems:
+                problem_id = problem.get("id") or problem.get("_id")
+                title = problem.get("title", "未知题目")
+                if not problem_id:
+                    yield sse(f"[跳过] 题目 {title} 缺少 problem_id。")
+                    continue
 
-                # 安全提取代码的核心函数
-                def _call_llm_safe():
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{config['llm_model']}:generateContent"
-                    resp = requests.post(url, headers={"Content-Type": "application/json", "x-goog-api-key": config["llm_api_key"]},
-                                         json={"contents": [{"role": "user", "parts": [{"text": prompt}]}]}, verify=False)
-                    resp.raise_for_status()
-                    raw_text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
-                    
-                    # 动态生成 fence，彻底避免渲染污染
-                    fence = chr(96) * 3 
-                    # 使用正则提取代码块
-                    pattern = fence + r'[a-zA-Z]*\s*\n(.*?)(?:' + fence + r'|$)'
-                    match = re.search(pattern, raw_text, re.DOTALL)
-                    return match.group(1).strip() if match else raw_text.strip()
+                if problem.get("my_status") == 0:
+                    yield sse(f"[系统] [{problem_id}] {title} 已通过，自动跳过。")
+                    continue
 
-                code = await asyncio.to_thread(_call_llm_safe)
-                
-                # 提交逻辑
-                res = await asyncio.to_thread(client.submit, pid, contest_id, code, config["language"])
-                yield f"data: [提交] 📤 已提交，等待判题...\n\n"
-                
-                await asyncio.sleep(5) # 基础防风控
+                yield sse(f"[处理] 正在攻克：[{problem_id}] {title} ...")
 
-            yield "data: [系统] 🎉 任务完成。\n\n"
-        except Exception as e:
-            yield f"data: [错误] ❌ 执行异常: {str(e)}\n\n"
+                languages = problem.get("languages") or [language]
+                use_lang = language if language in languages else languages[0]
+                prompt = build_prompt(problem, use_lang)
+
+                yield sse(f"[API] 正在请求大模型 API (Model: {model}) 生成 {use_lang} 代码...")
+                code = await asyncio.to_thread(
+                    call_llm,
+                    prompt,
+                    llm_api_key,
+                    llm_model,
+                    base_url,
+                    model_type,
+                )
+
+                yield sse("[提交] 方案已生成，正在向 OJ 提交代码...")
+                submit_result = await asyncio.to_thread(
+                    client.submit,
+                    problem_id,
+                    contest_id,
+                    code,
+                    use_lang,
+                )
+
+                if submit_result.get("status") == "cooldown":
+                    wait_seconds = submit_result.get("wait", interval)
+                    yield sse(f"[冷却] OJ 限制提交频率，等待 {wait_seconds} 秒后继续。")
+                    await asyncio.sleep(wait_seconds)
+                    submit_result = await asyncio.to_thread(
+                        client.submit,
+                        problem_id,
+                        contest_id,
+                        code,
+                        use_lang,
+                    )
+
+                submission_id = submit_result["id"]
+                yield sse(f"[提交] 提交成功 (ID: {submission_id})，正在轮询评测结果...")
+
+                result_data = await asyncio.to_thread(client.poll_result, submission_id)
+                result_code = result_data.get("result", "unknown")
+                status_text = STATUS_NAME.get(result_code, f"未知状态码({result_code})")
+                yield sse(f"[结果] 做题结果: {status_text}")
+
+                if result_code == -2:
+                    err = result_data.get("statistic_info", {}).get("err_info", "")
+                    yield sse(f"[错误] 编译报错: {err[:150]}...")
+
+                yield sse(f"[休眠] 防风控冷却中，等待 {interval} 秒后继续...")
+                await asyncio.sleep(interval)
+
+            yield sse("[系统] 托管结束，所有未通过题目已处理完毕。")
+
+        except Exception as exc:
+            error_details = traceback.format_exc()
+            yield sse("[错误] 自动化流程遇到异常，已中断。")
+            yield sse(f"[错误] 报错详情: {exc}")
+            for line in error_details.splitlines()[-5:]:
+                if line.strip():
+                    yield sse(f"[错误] {line}")
 
     return StreamingResponse(generate_log(), media_type="text/event-stream")

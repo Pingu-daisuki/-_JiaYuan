@@ -30,6 +30,11 @@
       <span>XMU_RollCall</span>
     </el-menu-item>
 
+    <el-menu-item index="oj">
+      <el-icon><Monitor /></el-icon>
+      <span>OJ 自动化破题</span>
+    </el-menu-item>
+
     <el-menu-item index="settings">
       <el-icon><Setting /></el-icon>
       <span>引擎与模型设置</span>
@@ -40,7 +45,7 @@
       <el-main class="content-area">
         <KeepAlive>
         <ChatView v-if="activeMenu === 'chat'" class="module-wrapper" />
-        <OjView v-if="activeMenu === 'oj' " class="module-wrapper" />
+        <OjView v-else-if="activeMenu === 'oj' " class="module-wrapper" />
         <LibraryPanel v-else-if="activeMenu === 'library'" class="module-wrapper" />
         <CampusView v-else-if="activeMenu === 'campus'" class="module-wrapper" />
         <SettingsView v-else-if="activeMenu === 'settings'" class="module-wrapper" />

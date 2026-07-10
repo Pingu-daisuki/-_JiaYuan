@@ -10,7 +10,7 @@ if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
 # ✨ 核心校验 1：确保把 campus 模块正确引入
-from routes import chat, rag, library, campus 
+from routes import chat, rag, library, campus, oj
 
 os.makedirs("uploads", exist_ok=True)
 os.makedirs("vector_db", exist_ok=True)
@@ -33,6 +33,7 @@ app.include_router(library.router, prefix="/api/library", tags=["Library Managem
 
 # ✨ 核心校验 2：必须使用 prefix="/api/campus"，与前端的 /api/campus/trigger_sign 严丝合缝
 app.include_router(campus.router, prefix="/api/campus", tags=["Campus Tools"])
+app.include_router(oj.router, prefix="/api/oj", tags=["OJ Engine"])
 
 if __name__ == "__main__":
     import uvicorn
