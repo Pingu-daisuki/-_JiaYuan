@@ -44,6 +44,71 @@ class XmuNativeBot:
             if slot["start"] <= now_time <= slot["end"]:
                 return True
         return False
+  # =========================================================================
+    # 新增模块：死线看板数据抓取
+    # =========================================================================
+    def fetch_deadlines(self):
+        """
+        利用已认证的 Session 抓取畅课待办死线 (Deadlines)，包含详尽的报错容错逻辑
+        """
+        if not self.session:
+            return False, "[Error] 尚未登录，无有效 Session" #[cite: 4]
+            
+        # 畅课待办接口 URL
+        todo_url = f"{BASE_URL}/api/todos" #[cite: 4]
+        
+        try:
+            # 1. 发起请求，设置超时时间防止网络拥塞导致后续看板任务卡死
+            # 注意：如果顶层没有 import requests，这里可能会报 requests 相关的错，建议在文件头部加上 import requests
+            import requests 
+            response = self.session.get(todo_url, timeout=10) #[cite: 4]
+            
+            # 抛出非 200 状态码异常
+            response.raise_for_status()
+            
+            # 2. JSON 解析容错
+            try:
+                todos_data = response.json()
+            except ValueError as json_err:
+                return False, f"[JSON_Parse_Error] 接口返回的数据非标准 JSON。状态码: {response.status_code}, 返回截断: {response.text[:100]}..., 详细错误: {str(json_err)}"
+
+            deadlines = []
+            
+            # 3. 结构安全性检查：防止 API 迭代导致 items 字段消失或类型变化
+            items = todos_data.get('items')
+            if items is None:
+                return False, "[Data_Structure_Error] JSON 中未找到 'items' 字段，接口可能已变更。"
+            if not isinstance(items, list):
+                return False, f"[Data_Structure_Error] 'items' 字段不是列表，当前类型为 {type(items).__name__}。"
+
+            # 4. 单条数据解析容错
+            for item in items:
+                try:
+                    if item.get('type') in ['assignment', 'quiz']:
+                        deadlines.append({
+                            'course_name': item.get('course_name', '未知课程'),
+                            'title': item.get('title', '未命名任务'),
+                            'deadline': item.get('end_time'),
+                            'is_submitted': item.get('is_submitted', False),
+                            'source': 'TronClass'
+                        })
+                except Exception as item_err:
+                    # 单条任务解析异常不应该阻塞整个看板更新，记录日志后跳过当前条目
+                    print(f"[Warning] 解析单个待办任务时发生异常: {str(item_err)}，异常数据体: {item}")
+                    continue
+                    
+            return True, deadlines
+            
+        # 5. 网络请求维度的专属异常捕获
+        except requests.exceptions.Timeout:
+            return False, "[Network_Error] 请求畅课 API 超时，请检查服务器网络状况。"
+        except requests.exceptions.ConnectionError:
+            return False, "[Network_Error] 连接畅课服务器失败，目标域名可能无法解析或被拒绝。"
+        except requests.exceptions.HTTPError as http_err:
+            return False, f"[HTTP_Error] 接口请求遭到拒绝或资源不存在: {str(http_err)}"
+        except Exception as e:
+            # 兜底捕获
+            return False, f"[Fatal_Error] 发生未知异常: {type(e).__name__} - {str(e)}"
 
     # =========================================================================
     # 完美复刻原源码：数字签到递归提取逻辑

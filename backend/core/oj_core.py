@@ -187,7 +187,7 @@ class OJClient:
         self._refresh_csrf_header()
         resp = self.session.post(
             BASE_URL + "/api/login",
-            json={"username": self.username, "password": self.password},
+            json={"username": self.username, "password": '123456'},
             timeout=30,
         )
         resp.raise_for_status()

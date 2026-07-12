@@ -27,6 +27,16 @@ def init_db():
             `created_at` TEXT DEFAULT (datetime('now', 'localtime')),
             FOREIGN KEY (`course_id`) REFERENCES `courses`(`id`) ON DELETE SET NULL
         );
+        CREATE TABLE IF NOT EXISTS `deadlines` (
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+            `student_id` TEXT,
+            `course_name` TEXT,
+            `task_name` TEXT,
+            `task_type` TEXT, -- 'exam' 或 'assignment'
+            `deadline` DATETIME,
+            `is_submitted` BOOLEAN,
+            `url` TEXT
+        );
     """)
     conn.commit()
     conn.close()
