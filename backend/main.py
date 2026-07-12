@@ -11,8 +11,8 @@ if current_dir not in sys.path:
 
 # ✨ 核心校验 1：确保把 campus 模块正确引入
 from routes import chat, rag, library, campus, oj
-from backend.routes import deadlines
-app.include_router(deadlines.router, prefix="/api")
+from routes import deadlines
+
 
 os.makedirs("uploads", exist_ok=True)
 os.makedirs("vector_db", exist_ok=True)
@@ -28,7 +28,7 @@ app.add_middleware(
 )
 
 app.mount("/api/uploads", StaticFiles(directory="uploads"), name="uploads")
-
+app.include_router(deadlines.router, prefix="/api")
 app.include_router(chat.router, prefix="/api/chat", tags=["Model Gateway"])
 app.include_router(rag.router, prefix="/api/rag", tags=["RAG Engine"])
 app.include_router(library.router, prefix="/api/library", tags=["Library Management"])

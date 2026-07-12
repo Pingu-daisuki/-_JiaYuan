@@ -4,8 +4,8 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 
 # 导入你的核心业务逻辑和数据库操作
-from backend.core.campus_core import XmuNativeBot
-from backend.core import db
+from core.campus_core import XmuNativeBot
+from core import db
 
 # 创建路由器实例，并在 main.py 中挂载
 router = APIRouter(

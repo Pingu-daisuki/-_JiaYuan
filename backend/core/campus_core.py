@@ -3,6 +3,7 @@ import math
 import time
 import uuid
 import asyncio
+import requests # <--- 新增
 from datetime import datetime
 from xmulogin import xmulogin
 
@@ -60,7 +61,6 @@ class XmuNativeBot:
         try:
             # 1. 发起请求，设置超时时间防止网络拥塞导致后续看板任务卡死
             # 注意：如果顶层没有 import requests，这里可能会报 requests 相关的错，建议在文件头部加上 import requests
-            import requests 
             response = self.session.get(todo_url, timeout=10) #[cite: 4]
             
             # 抛出非 200 状态码异常
