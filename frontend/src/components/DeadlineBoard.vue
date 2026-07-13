@@ -86,6 +86,9 @@ import axios from 'axios';
 import { Calendar } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 
+// 🎯 核心修复：显式指定后端 API 地址，绕过前端代理配置问题
+const API_BASE = 'http://127.0.0.1:8000';
+
 const currentView = ref('assignments');
 const selectedAccount = ref(null);
 const loading = ref(false);
@@ -96,10 +99,17 @@ const deadlines = ref([]);
 // 1. 初始化时从已有的 campus 路由读取账号
 const fetchAccounts = async () => {
   try {
-    const res = await axios.get('/api/campus/accounts');
-    accounts.value = res.data;
+    const res = await axios.get(`${API_BASE}/api/campus/accounts`);
+    // 严格校验必须是数组，否则清空
+    if (Array.isArray(res.data)) {
+      accounts.value = res.data;
+    } else {
+      accounts.value = [];
+      ElMessage.warning('后端返回的数据格式异常，不是标准数组');
+    }
   } catch (error) {
-    ElMessage.error('获取账号列表失败，请检查后端状态');
+    accounts.value = [];
+    ElMessage.error('获取账号列表失败，请检查 FastAPI 后端是否运行在 8000 端口');
   }
 };
 
@@ -108,10 +118,11 @@ const selectAccount = async (acc) => {
   selectedAccount.value = acc;
   loading.value = true;
   try {
-    const res = await axios.get(`/api/deadlines/${acc.student_id}?sync=false`);
+    const res = await axios.get(`${API_BASE}/api/deadlines/${acc.student_id}?sync=false`);
     deadlines.value = res.data.data || [];
   } catch (error) {
     ElMessage.error('获取本地 Deadline 失败');
+    deadlines.value = [];
   } finally {
     loading.value = false;
   }
@@ -122,7 +133,7 @@ const syncData = async () => {
   if (!selectedAccount.value) return;
   loading.value = true;
   try {
-    const res = await axios.get(`/api/deadlines/${selectedAccount.value.student_id}?sync=true`);
+    const res = await axios.get(`${API_BASE}/api/deadlines/${selectedAccount.value.student_id}?sync=true`);
     deadlines.value = res.data.data || [];
     ElMessage.success('同步畅课数据成功！');
   } catch (error) {

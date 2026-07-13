@@ -70,18 +70,45 @@ class XmuNativeBot:
             try:
                 todos_data = response.json()
             except ValueError as json_err:
-                return False, f"[JSON_Parse_Error] 接口返回的数据非标准 JSON。状态码: {response.status_code}, 返回截断: {response.text[:100]}..., 详细错误: {str(json_err)}"
+                return False, f"[JSON_Parse_Error] 接口返回的数据非标准 JSON。状态码: {response.status_code}, 详细错误: {str(json_err)}"
 
             deadlines = []
             
-            # 3. 结构安全性检查：防止 API 迭代导致 items 字段消失或类型变化
-            items = todos_data.get('items')
+            # 3. 结构安全性检查：现在明确知道列表的键名叫 'todo_list'
+            items = todos_data.get('todo_list')
             if items is None:
-                return False, "[Data_Structure_Error] JSON 中未找到 'items' 字段，接口可能已变更。"
+                return False, f"[Data_Structure_Error] JSON 中未找到 'todo_list' 字段，当前返回的键名有: {list(todos_data.keys())}"
             if not isinstance(items, list):
-                return False, f"[Data_Structure_Error] 'items' 字段不是列表，当前类型为 {type(items).__name__}。"
+                return False, f"[Data_Structure_Error] 'todo_list' 字段不是列表，当前类型为 {type(items).__name__}。"
 
-            # 4. 单条数据解析容错
+            # 💡 打印第一条数据到终端，以防内部字段名对不上
+            if len(items) > 0:
+                print("\n" + "="*50)
+                print("🎯 [DEBUG] 第一条作业/待办的真实结构：")
+                print(items[0])
+                print("="*50 + "\n")
+
+            # 4. 单条数据解析容错 (加入常见的命名兼容)
+            for item in items:
+                try:
+                    # 尝试多种可能的任务类型标识
+                    task_type = item.get('type') or item.get('task_type') or 'assignment'
+                    
+                    deadlines.append({
+                        # 兼容下划线和驼峰命名
+                        'course_name': item.get('course_name') or item.get('courseName') or '未知课程',
+                        'title': item.get('title') or item.get('name') or '未命名任务',
+                        'deadline': item.get('end_time') or item.get('endTime') or item.get('deadline'),
+                        'is_submitted': item.get('is_submitted') or item.get('isSubmitted') or False,
+                        'type': task_type,
+                        'source': 'TronClass'
+                    })
+                except Exception as item_err:
+                    print(f"[Warning] 解析单个待办任务时发生异常: {str(item_err)}，异常数据体: {item}")
+                    continue
+                    
+            return True, deadlines
+         # 4. 单条数据解析容错
             for item in items:
                 try:
                     if item.get('type') in ['assignment', 'quiz']:
