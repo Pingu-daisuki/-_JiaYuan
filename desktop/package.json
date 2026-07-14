@@ -1,0 +1,89 @@
+{
+  "name": "jiayuan-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "author": "JiaYuan Project",
+  "description": "厦大 JiaYuan 本地 RAG 桌面客户端",
+  "main": "main.cjs",
+  "scripts": {
+    "build:frontend": "npm --prefix ../frontend run build",
+    "build:runtime": "powershell -ExecutionPolicy Bypass -File ./scripts/build-python-runtime.ps1",
+    "pack:win": "npm run build:frontend && electron-builder --win nsis --x64",
+    "pack:dir": "npm run build:frontend && electron-builder --win dir --x64"
+  },
+  "devDependencies": {
+    "electron": "^43.1.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "cn.xmu.jiayuan.desktop",
+    "productName": "JiaYuan",
+    "asar": true,
+    "directories": {
+      "output": "../release"
+    },
+    "files": [
+      "main.cjs",
+      "splash.html",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../frontend/dist",
+        "to": "frontend",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../backend",
+        "to": "backend",
+        "filter": [
+          "**/*",
+          "!campus_assistant.db",
+          "!config.json",
+          "!uploads/**/*",
+          "!vector_db/**/*",
+          "!engine_flags/**/*",
+          "!engine_config/**/*",
+          "!models/**/*",
+          "!**/__pycache__/**/*",
+          "!**/*.pyc",
+          "!**/*.pyo"
+        ]
+      },
+      {
+        "from": "runtime/python-runtime.tar",
+        "to": "runtime/python-runtime.tar"
+      },
+      {
+        "from": "runtime/runtime-manifest.json",
+        "to": "runtime/runtime-manifest.json"
+      },
+      {
+        "from": "runtime/models-runtime.tar",
+        "to": "runtime/models-runtime.tar"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "JiaYuan-Setup-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "JiaYuan",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}

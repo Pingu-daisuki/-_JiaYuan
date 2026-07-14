@@ -26,3 +26,28 @@ __pycache__/
 *.zip
 *.tar.gz
 *.rar
+
+# Runtime data and personal information
+backend/campus_assistant.db
+backend/config.json
+backend/uploads/*
+backend/vector_db/
+backend/vector_db_corrupt_backup_*/
+backend/engine_flags/*
+backend/engine_config/
+backend/models/
+
+# Local backups and temporary restore/build outputs
+.backups/
+.restore_*/
+frontend/dist/
+frontend/node_modules/.vite/
+frontend/.eslintcache
+desktop/node_modules/
+desktop/runtime/python/
+desktop/runtime/models/
+desktop/runtime/.downloads/
+desktop/runtime/python-runtime.zip
+desktop/runtime/python-runtime.tar
+desktop/runtime/models-runtime.tar
+release/

@@ -9,12 +9,13 @@ from fastapi.responses import StreamingResponse
 
 from core.db import get_db_connection
 from core.oj_core import OJClient, STATUS_NAME, build_prompt, call_llm
+from core.paths import DATA_DIR
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 router = APIRouter()
 
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
+CONFIG_PATH = os.path.join(DATA_DIR, "config.json")
 
 
 def sse(message):

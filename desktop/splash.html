@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JiaYuan 正在启动</title>
+    <style>
+      :root { color-scheme: dark; font-family: "Microsoft YaHei UI", system-ui, sans-serif; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; min-height: 100vh; display: grid; place-items: center;
+        color: #e8f4ff; background: radial-gradient(circle at 25% 15%, #173968, #07101f 60%);
+      }
+      main { width: min(560px, 84vw); padding: 42px; border: 1px solid #31598b; border-radius: 20px; background: #0c1a2dcc; box-shadow: 0 24px 70px #0008; }
+      h1 { margin: 0 0 12px; font-size: 30px; }
+      p { margin: 0; color: #a9c8e8; line-height: 1.75; }
+      .bar { height: 8px; margin: 28px 0 18px; overflow: hidden; border-radius: 999px; background: #152a46; }
+      .bar::after { content: ""; display: block; width: 42%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #42bfff, #6c7cff); animation: move 1.4s ease-in-out infinite alternate; }
+      small { color: #6f96be; }
+      @keyframes move { from { transform: translateX(-25%); } to { transform: translateX(165%); } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>JiaYuan 正在启动</h1>
+      <p id="status">正在准备本地运行环境，请稍候…</p>
+      <div class="bar"></div>
+      <small>首次启动需要复制私有 Python 运行时并加载向量模型，之后会明显加快。</small>
+    </main>
+  </body>
+</html>

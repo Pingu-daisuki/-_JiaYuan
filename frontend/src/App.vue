@@ -33,12 +33,12 @@
           <!-- ✨ 新增的 Deadline 看板入口 -->
           <el-menu-item index="deadlines">
             <el-icon><Calendar /></el-icon>
-            <span>死线与考试看板</span>
+            <span>XMU_DeadLines</span>
           </el-menu-item>
 
           <el-menu-item index="oj">
             <el-icon><Monitor /></el-icon>
-            <span>OJ 自动化破题</span>
+            <span>XMU_OJ</span>
           </el-menu-item>
 
           <el-menu-item index="settings">

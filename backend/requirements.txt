@@ -1,0 +1,22 @@
+# Backend web/API
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+python-multipart>=0.0.9,<1
+httpx>=0.27,<1
+requests>=2.32,<3
+openai>=1.60,<3
+xmulogin>=1.0,<2
+pycryptodome>=3.20,<4
+
+# Local RAG and PDF extraction
+chromadb>=0.5,<2
+sentence-transformers>=3,<6
+PyMuPDF>=1.24,<2
+
+# Native document extraction
+python-docx>=1.1,<2
+python-pptx>=1.0,<2
+beautifulsoup4>=4.12,<5
+
+# Marker and MinerU remain optional and are installed/verified by the engine settings page.
+# Marker uses marker-pdf[full] so DOCX/PPTX/HTML converter dependencies are included.

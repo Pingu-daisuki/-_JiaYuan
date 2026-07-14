@@ -9,7 +9,7 @@
       <template #header>
         <div class="card-header">
           <el-icon><Document /></el-icon>
-          <span>本地 PDF 解析引擎</span>
+          <span>本地复杂文档解析引擎</span>
         </div>
       </template>
       
@@ -21,9 +21,9 @@
           class="engine-select"
           @change="handleEngineChange"
         >
-          <el-option value="pypdf" label="PyMuPDF">
+          <el-option value="pymupdf" label="PyMuPDF">
             <span class="engine-title">PyMuPDF</span>
-            <span class="engine-desc">默认 · 轻量级 · 易出错</span>
+            <span class="engine-desc">默认 · 轻量级 · 扫描件 OCR 兜底</span>
           </el-option>
           <el-option value="marker" label="Marker">
             <span class="engine-title">Marker</span>
@@ -43,7 +43,7 @@
         </span>
       </div>
 
-      <div class="setting-tip">提示：高级引擎(Marker/MinerU)能大幅提升数学公式和表格的识别率。</div>
+      <div class="setting-tip">提示：PDF 可使用全部引擎；DOCX/PPTX 会在选择 Marker/MinerU 时使用高级解析，Markdown 始终走轻量原生解析，HTML 仅 Marker 使用高级解析。</div>
     </el-card>
 
     <!-- ✨ 首次启用引擎：下载前的设备选择弹窗 -->
@@ -56,14 +56,17 @@
       <p style="margin: 0 0 16px; color: #606266; font-size: 14px;">
         您是初次选择 <strong>{{ pendingEngine ? pendingEngine.toUpperCase() : '' }}</strong> 引擎，请选择该引擎的运行设备（选定后将开始下载对应版本的依赖，仅首次需要）：
       </p>
+      <p v-if="currentEngineDevice" style="margin: 0 0 16px; color: #909399; font-size: 13px;">
+        当前已验证为 {{ currentEngineDevice === 'cuda' ? 'GPU' : 'CPU' }}；选择新设备后会重新执行扫描件验证。
+      </p>
       <el-radio-group v-model="useGpu" class="device-choice-group">
-        <el-radio :value="true" class="device-choice-item">
-          <div class="device-choice-title">GPU（CUDA）<span class="recommend-tag">强烈推荐</span></div>
-          <div class="device-choice-desc">速度快数倍，适合有 NVIDIA 独立显卡的电脑。若显卡驱动/CUDA 版本不匹配，下载或运行时可能会失败，届时可改回 CPU 重试。</div>
-        </el-radio>
-        <el-radio :value="false" class="device-choice-item">
-          <div class="device-choice-title">CPU</div>
-          <div class="device-choice-desc">兼容性最好，几乎不会出兼容性问题，但解析速度明显更慢（一份几页的 PDF 可能要几分钟到十几分钟）。</div>
+          <el-radio :value="true" class="device-choice-item">
+            <div class="device-choice-title">GPU（CUDA）</div>
+            <div class="device-choice-desc">适合 NVIDIA 显卡。若现有 PyTorch 不支持该显卡架构，系统会安装官方 CUDA 版 PyTorch 后进行真实扫描件验证；验证失败不会假装以 CPU 成功。</div>
+          </el-radio>
+          <el-radio :value="false" class="device-choice-item">
+            <div class="device-choice-title">CPU<span class="recommend-tag">默认推荐</span></div>
+            <div class="device-choice-desc">兼容性最好，几乎不会出兼容性问题，但解析速度明显更慢（一份几页的 PDF 可能要几分钟到十几分钟）。</div>
         </el-radio>
       </el-radio-group>
       <template #footer>
@@ -193,8 +196,8 @@ import { Document, Cpu, Select, Close, Plus, CirclePlus } from '@element-plus/ic
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 // --- 状态数据 ---
-const pdfEngine = ref('pypdf')
-const previousEngine = ref('pypdf') // 用于用户取消/下载失败时回退选择
+const pdfEngine = ref('pymupdf')
+const previousEngine = ref('pymupdf') // 用于用户取消/下载失败时回退选择
 const activeModelName = ref('')
 const savedConfigs = ref([]) // 永久保存的模型列表
 
@@ -205,10 +208,12 @@ const initDone = ref(false)
 const initFailed = ref(false)
 
 // --- ✨ 新增：GPU/CPU 运行设备选择 ---
-const useGpu = ref(true) // 弹窗里的默认选中项：强烈推荐 GPU
+const useGpu = ref(false) // 默认 CPU，避免在 CUDA/PyTorch 不匹配时初始化失败
 const currentEngineDevice = ref(null) // 当前选中引擎已初始化的设备，null 表示还没初始化过
 const deviceChoiceDialogVisible = ref(false) // 下载前的设备选择弹窗
 const pendingEngine = ref(null) // 正在等待用户选设备确认下载的引擎名
+const ENGINE_INIT_SUCCESS_TOKEN = '___ENGINE_INIT_SUCCESS___'
+const ENGINE_INIT_FAILURE_TOKEN = '___ENGINE_INIT_FAILED___'
 
 // 新增模型的表单绑定数据
 const newModel = ref({
@@ -224,6 +229,9 @@ const checkEngineStatus = async (engineValue) => {
   try {
     const res = await fetch(`http://127.0.0.1:8000/api/engine/status/${engineValue}`)
     const data = await res.json()
+    if (!res.ok || typeof data.initialized !== 'boolean') {
+      throw new Error(data.detail || `HTTP ${res.status}`)
+    }
     return data // { engine, initialized, device }
   } catch (e) {
     console.error('查询引擎状态失败', e)
@@ -240,29 +248,58 @@ const runEngineInit = async (engineValue, gpuChoice) => {
 
   try {
     const res = await fetch(`http://127.0.0.1:8000/api/engine/init/${engineValue}?use_gpu=${gpuChoice}`)
+    if (!res.ok || !res.body) {
+      throw new Error(`后端初始化接口返回 HTTP ${res.status}`)
+    }
     const reader = res.body.getReader()
     const decoder = new TextDecoder('utf-8')
+    let pendingText = ''
+    let receivedSuccess = false
+    let receivedFailure = false
+
+    const appendLines = (text, flush = false) => {
+      pendingText += text
+      const lines = pendingText.split('\n')
+      pendingText = flush ? '' : lines.pop()
+      lines.forEach((line) => {
+        const normalizedLine = line.trimEnd()
+        if (!normalizedLine.trim()) return
+        if (normalizedLine.includes(ENGINE_INIT_SUCCESS_TOKEN)) {
+          receivedSuccess = true
+          return
+        }
+        if (normalizedLine.includes(ENGINE_INIT_FAILURE_TOKEN)) {
+          receivedFailure = true
+          return
+        }
+        initLogs.value.push(normalizedLine)
+      })
+    }
 
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
-      const chunkText = decoder.decode(value, { stream: true })
-      chunkText.split('\n').forEach((line) => {
-        if (line.trim()) initLogs.value.push(line)
-      })
+      appendLines(decoder.decode(value, { stream: true }))
     }
+    appendLines(decoder.decode(), true)
 
-    // 根据最后的日志判断是否失败
-    const failed = initLogs.value.some((l) => l.includes('[错误]') || l.includes('[致命异常]'))
-    if (failed) {
+    // 成功 token 只会在后端完成扫描 PDF -> 非空 Markdown 验证并写入标记后发出。
+    const verifiedStatus = receivedSuccess && !receivedFailure
+      ? await checkEngineStatus(engineValue)
+      : { initialized: false, device: null }
+    const expectedDevice = gpuChoice ? 'cuda' : 'cpu'
+    if (!receivedSuccess || receivedFailure || !verifiedStatus.initialized || verifiedStatus.device !== expectedDevice) {
+      if (!receivedFailure) {
+        initLogs.value.push('[错误] 未收到后端初始化成功确认，不会启用该引擎。')
+      }
       initFailed.value = true
       ElMessage.error(`${engineValue.toUpperCase()} 初始化失败，请查看弹窗中的日志排查`)
       pdfEngine.value = previousEngine.value // 回退选择
     } else {
       initDone.value = true
       previousEngine.value = engineValue
-      currentEngineDevice.value = gpuChoice ? 'cuda' : 'cpu'
-      ElMessage.success(`${engineValue.toUpperCase()} 初始化完成（${gpuChoice ? 'GPU' : 'CPU'}），可以开始使用！`)
+      currentEngineDevice.value = verifiedStatus.device
+      ElMessage.success(`${engineValue.toUpperCase()} 初始化完成（${verifiedStatus.device === 'cuda' ? 'GPU' : 'CPU'}），可以开始使用！`)
     }
   } catch (e) {
     initLogs.value.push(`[前端异常] 连接后端失败: ${e}`)
@@ -281,6 +318,14 @@ const handleEngineChange = async (engineValue) => {
   }
 
   const status = await checkEngineStatus(engineValue)
+  if (status.initialized && status.device === 'cpu') {
+    // 已验证过 CPU 的引擎仍可显式切换至 GPU；后端会重新跑扫描件探针。
+    currentEngineDevice.value = status.device
+    pendingEngine.value = engineValue
+    useGpu.value = true
+    deviceChoiceDialogVisible.value = true
+    return
+  }
   if (status.initialized) {
     // 已经初始化过，直接放行，不再弹窗、不再下载；把已用设备展示出来
     previousEngine.value = engineValue
@@ -291,7 +336,7 @@ const handleEngineChange = async (engineValue) => {
   // 还没初始化过 → 弹出"选设备 + 确认下载"弹窗
   currentEngineDevice.value = null
   pendingEngine.value = engineValue
-  useGpu.value = true // 每次弹出都默认推荐 GPU
+  useGpu.value = false // 每次弹出默认 CPU，用户可主动切换到 GPU
   deviceChoiceDialogVisible.value = true
 }
 
@@ -381,8 +426,10 @@ const loadSettings = () => {
     try {
       const parsed = JSON.parse(savedData)
       if (parsed.pdfEngine) {
-        pdfEngine.value = parsed.pdfEngine
-        previousEngine.value = parsed.pdfEngine
+        // 兼容旧版保存的 pypdf 标识，实际引擎一直是 PyMuPDF。
+        const normalizedEngine = parsed.pdfEngine === 'pypdf' ? 'pymupdf' : parsed.pdfEngine
+        pdfEngine.value = normalizedEngine
+        previousEngine.value = normalizedEngine
       }
       if (parsed.configs) savedConfigs.value = parsed.configs
       if (parsed.active) activeModelName.value = parsed.active

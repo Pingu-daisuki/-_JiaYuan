@@ -1,12 +1,12 @@
 @echo off
-echo 🚀 正在启动 厦大_JiaYuan RAG 系统...
+setlocal
+chcp 65001 >nul
+cd /d "%~dp0"
 
-:: 启动后端 (打开新窗口并保持开启)
-echo 启动后端核心引擎...
-start cmd /k "cd backend && python main.py"
+echo Starting JiaYuan development services...
+start "JiaYuan Backend" /D "%~dp0backend" cmd /k "set JIAYUAN_RELOAD=1&& python main.py"
+start "JiaYuan Frontend" /D "%~dp0frontend" cmd /k "npm run dev"
 
-:: 启动前端 (打开新窗口并保持开启)
-echo 启动前端交互界面...
-start cmd /k "cd frontend && npm run dev"
-
-echo ✅ 启动命令已发送！请等待黑色窗口出现 Application startup complete...
+echo Backend and frontend launch commands have been sent.
+echo Open the address printed by Vite after both services are ready.
+endlocal

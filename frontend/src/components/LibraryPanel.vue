@@ -7,7 +7,23 @@
       </el-button>
     </div>
 
-    <div class="breadcrumb-container">
+    <div class="search-container">
+      <el-input
+        v-model="searchQuery"
+        clearable
+        placeholder="模糊搜索课程或文件，例如：电路原里"
+        @input="scheduleSearch"
+        @clear="resetSearch"
+        @keyup.enter="searchLibrary"
+      >
+        <template #prefix>
+          <el-icon><Search /></el-icon>
+        </template>
+      </el-input>
+      <span class="search-hint">在整个文库中搜索</span>
+    </div>
+
+    <div v-if="!isSearchMode" class="breadcrumb-container">
       <el-breadcrumb separator="/">
         <el-breadcrumb-item 
           v-for="(step, index) in currentPath" 
@@ -20,70 +36,128 @@
       </el-breadcrumb>
     </div>
 
-    <div class="explorer-container">
-      <div v-if="visibleFolders.length === 0 && files.length === 0" class="empty-tip">
-        当前目录为空
-      </div>
-      
-      <div 
-        v-for="folder in visibleFolders" 
-        :key="'folder-' + folder.id" 
-        class="explorer-item folder-item"
-        @click="enterFolder(folder)"
-      >
-        <div class="item-info">
-          <el-icon class="icon folder-icon"><Folder /></el-icon>
-          <span class="name">{{ folder.course_name }}</span>
+    <div v-loading="searching" class="explorer-container">
+      <template v-if="isSearchMode">
+        <div v-if="!searching && searchResults.length === 0" class="empty-tip">
+          未找到匹配项，可尝试缩短关键词或检查错字
         </div>
 
-        <div class="item-actions">
-          <el-button type="primary" circle size="small" plain class="action-btn" @click.stop="promptRenameFolder(folder)">
-            <el-icon><Edit /></el-icon>
-          </el-button>
-          
-          <el-popconfirm
-            title="删除文件夹？(内部文件将退回根目录)"
-            confirm-button-type="danger"
-            @confirm="deleteFolder(folder.id)"
-          >
-            <template #reference>
-              <el-button type="danger" circle size="small" plain class="action-btn" @click.stop>
-                <el-icon><Delete /></el-icon>
-              </el-button>
-            </template>
-          </el-popconfirm>
+        <div
+          v-for="result in searchResults"
+          :key="`search-${result.type}-${result.id}`"
+          class="explorer-item search-item"
+          @click="openSearchResult(result)"
+        >
+          <div class="item-info">
+            <el-icon v-if="result.type === 'folder'" class="icon folder-icon"><Folder /></el-icon>
+            <el-icon v-else class="icon pdf-icon"><Document /></el-icon>
+            <div class="file-summary">
+              <span class="name" :title="result.name">{{ result.name }}</span>
+              <div class="file-metadata">
+                <el-tag size="small" effect="plain">
+                  {{ result.type === 'folder' ? '课程' : '文件' }}
+                </el-tag>
+                <el-tag
+                  v-if="result.type === 'file'"
+                  size="small"
+                  :type="statusTagType(result.status)"
+                >
+                  {{ statusLabel(result.status) }}
+                </el-tag>
+                <span class="search-path" :title="result.path">{{ result.path }}</span>
+              </div>
+            </div>
+          </div>
+          <span class="match-score">匹配 {{ Math.round(result.score * 100) }}%</span>
         </div>
-      </div>
+      </template>
 
-      <div 
-        v-for="file in files" 
-        :key="'file-' + file.id" 
-        class="explorer-item file-item"
-        @click="openPdf(file)"
-      >
-        <div class="item-info">
-          <el-icon class="icon pdf-icon"><Document /></el-icon>
-          <span class="name" :title="file.file_name">{{ file.file_name }}</span>
+      <template v-else>
+        <div v-if="visibleFolders.length === 0 && files.length === 0" class="empty-tip">
+          当前目录为空
         </div>
         
-        <div class="item-actions">
-          <el-button type="primary" circle size="small" plain class="action-btn" @click.stop="openMoveDialog(file)">
-            <el-icon><Setting /></el-icon>
-          </el-button>
-          
-          <el-popconfirm
-            title="彻底删除该课件及向量记忆？"
-            confirm-button-type="danger"
-            @confirm="deleteFile(file.id)"
-          >
-            <template #reference>
-              <el-button type="danger" circle size="small" plain class="action-btn" @click.stop>
-                <el-icon><Delete /></el-icon>
-              </el-button>
-            </template>
-          </el-popconfirm>
+        <div
+          v-for="folder in visibleFolders"
+          :key="'folder-' + folder.id"
+          class="explorer-item folder-item"
+          @click="enterFolder(folder)"
+        >
+          <div class="item-info">
+            <el-icon class="icon folder-icon"><Folder /></el-icon>
+            <span class="name">{{ folder.course_name }}</span>
+          </div>
+
+          <div class="item-actions">
+            <el-button type="primary" circle size="small" plain class="action-btn" @click.stop="promptRenameFolder(folder)">
+              <el-icon><Edit /></el-icon>
+            </el-button>
+
+            <el-popconfirm
+              title="删除文件夹？(内部文件将退回根目录)"
+              confirm-button-type="danger"
+              @confirm="deleteFolder(folder.id)"
+            >
+              <template #reference>
+                <el-button type="danger" circle size="small" plain class="action-btn" @click.stop>
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </template>
+            </el-popconfirm>
+          </div>
         </div>
-      </div>
+
+        <div
+          v-for="file in files"
+          :key="'file-' + file.id"
+          class="explorer-item file-item"
+          @click="openDocument(file)"
+        >
+          <div class="item-info">
+            <el-icon class="icon pdf-icon"><Document /></el-icon>
+            <div class="file-summary">
+              <span class="name" :title="file.file_name">{{ file.file_name }}</span>
+              <div class="file-metadata">
+                <el-tooltip
+                  v-if="file.status === 'failed'"
+                  :content="file.error_message || '入库失败'"
+                  placement="top"
+                >
+                  <el-tag size="small" :type="statusTagType(file.status)">
+                    {{ statusLabel(file.status) }}
+                  </el-tag>
+                </el-tooltip>
+                <el-tag v-else size="small" :type="statusTagType(file.status)">
+                  {{ statusLabel(file.status) }}
+              </el-tag>
+              <span v-if="file.status === 'ready'" class="metric-text">
+                  {{ formatUnitMetric(file) }} · {{ file.chunk_count || 0 }} 块
+                  <template v-if="file.engine"> · {{ file.engine }}</template>
+                  <template v-if="file.elapsed_ms"> · {{ formatElapsed(file.elapsed_ms) }}</template>
+                </span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="item-actions">
+            <el-button type="primary" circle size="small" plain class="action-btn" @click.stop="openMoveDialog(file)">
+              <el-icon><Setting /></el-icon>
+            </el-button>
+
+            <el-popconfirm
+              title="彻底删除该课件及向量记忆？"
+              confirm-button-type="danger"
+              @confirm="deleteFile(file.id)"
+            >
+              <template #reference>
+                <el-button type="danger" circle size="small" plain class="action-btn" @click.stop>
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </template>
+            </el-popconfirm>
+          </div>
+        </div>
+      </template>
     </div>
 
     <el-dialog v-model="folderDialogVisible" title="新建文件夹" width="400px">
@@ -114,12 +188,16 @@
         <el-button type="primary" @click="submitMoveFile">确认移动</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="previewDialogVisible" :title="previewTitle" width="720px">
+      <pre class="document-preview">{{ previewText }}</pre>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { FolderAdd, Folder, Document, Delete, Setting, Edit } from '@element-plus/icons-vue' // ✨ 导入 Edit 图标
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { FolderAdd, Folder, Document, Delete, Setting, Edit, Search } from '@element-plus/icons-vue' // ✨ 导入 Edit 图标
 import { ElMessage, ElMessageBox } from 'element-plus' // ✨ 导入 MessageBox 用于重命名输入框
 
 // --- 核心状态 ---
@@ -138,6 +216,47 @@ const moveDialogVisible = ref(false)
 const currentMoveFile = ref(null)
 const targetMoveFolderId = ref(0)
 const newFolderName = ref('')
+const previewDialogVisible = ref(false)
+const previewTitle = ref('文档预览')
+const previewText = ref('')
+const searchQuery = ref('')
+const searchResults = ref([])
+const searching = ref(false)
+const isSearchMode = computed(() => searchQuery.value.trim().length > 0)
+let searchTimer = null
+let searchRequestVersion = 0
+
+const STATUS_LABELS = {
+  uploaded: '已上传',
+  parsing: '解析中',
+  indexing: '索引中',
+  ready: '可检索',
+  failed: '失败',
+}
+
+const statusLabel = (status) => STATUS_LABELS[status] || '未知状态'
+const statusTagType = (status) => ({
+  uploaded: 'info',
+  parsing: 'warning',
+  indexing: 'warning',
+  ready: 'success',
+  failed: 'danger',
+}[status] || 'info')
+const formatElapsed = (elapsedMs) => {
+  if (!elapsedMs) return '0 秒'
+  if (elapsedMs < 1000) return `${elapsedMs} ms`
+  return `${(elapsedMs / 1000).toFixed(1)} 秒`
+}
+const formatUnitMetric = (file) => {
+  const count = file.unit_count || file.page_count || 0
+  const labels = {
+    page: '页',
+    slide: '张幻灯片',
+    heading: '个章节',
+    web_section: '个网页章节',
+  }
+  return `${count} ${labels[file.unit_type] || '个单元'}`
+}
 
 // --- 数据获取与处理 ---
 const buildTree = (items) => {
@@ -168,6 +287,56 @@ const fetchFiles = async (folderId) => {
   files.value = await res.json()
 }
 
+const resetSearch = () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = null
+  searchRequestVersion += 1
+  searchResults.value = []
+  searching.value = false
+}
+
+const searchLibrary = async () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = null
+  const query = searchQuery.value.trim()
+  if (!query) {
+    resetSearch()
+    return
+  }
+
+  const requestVersion = ++searchRequestVersion
+  searching.value = true
+  try {
+    const res = await fetch(
+      `http://127.0.0.1:8000/api/library/search?q=${encodeURIComponent(query)}&limit=30`
+    )
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}))
+      throw new Error(error.detail || `搜索失败（HTTP ${res.status}）`)
+    }
+    const data = await res.json()
+    if (requestVersion === searchRequestVersion && query === searchQuery.value.trim()) {
+      searchResults.value = data.results || []
+    }
+  } catch (error) {
+    if (requestVersion === searchRequestVersion) {
+      searchResults.value = []
+      ElMessage.error(error.message || '文库搜索失败')
+    }
+  } finally {
+    if (requestVersion === searchRequestVersion) searching.value = false
+  }
+}
+
+const scheduleSearch = () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  if (!searchQuery.value.trim()) {
+    resetSearch()
+    return
+  }
+  searchTimer = setTimeout(searchLibrary, 250)
+}
+
 // --- 导航操作 ---
 const enterFolder = (folder) => {
   currentPath.value.push(folder)
@@ -176,6 +345,32 @@ const enterFolder = (folder) => {
 const navigateTo = (index) => {
   currentPath.value = currentPath.value.slice(0, index + 1)
   fetchFiles(currentFolderId.value)
+}
+
+const buildPathToFolder = (folderId) => {
+  const lookup = new Map(allFolders.value.map(folder => [folder.id, folder]))
+  const path = []
+  const visited = new Set()
+  let currentId = folderId
+  while (currentId && !visited.has(currentId)) {
+    visited.add(currentId)
+    const folder = lookup.get(currentId)
+    if (!folder) break
+    path.unshift(folder)
+    currentId = folder.parent_id || 0
+  }
+  return [{ id: 0, course_name: '根目录' }, ...path]
+}
+
+const openSearchResult = (result) => {
+  if (result.type === 'file') {
+    openDocument(result)
+    return
+  }
+  searchQuery.value = ''
+  resetSearch()
+  currentPath.value = buildPathToFolder(result.id)
+  fetchFiles(result.id)
 }
 
 // --- 📁 文件夹的重命名与删除 (新核心逻辑) ---
@@ -249,15 +444,35 @@ const deleteFile = async (fileId) => {
     fetchFiles(currentFolderId.value)
   }
 }
-// ✨ 新增：调用浏览器原生能力在新标签页秒开 PDF 文件
-const openPdf = (file) => {
-  const fileUrl = `http://127.0.0.1:8000/api/uploads/${encodeURIComponent(file.file_name)}`;
-  window.open(fileUrl, '_blank');
+const openDocument = async (file) => {
+  if (file.source_kind === 'url' && file.source_url) {
+    window.open(file.source_url, '_blank', 'noopener,noreferrer')
+    return
+  }
+  if (['markdown', 'html'].includes(file.document_type)) {
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/api/library/documents/${file.id}/preview`)
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.detail || `预览失败（HTTP ${response.status}）`)
+      previewTitle.value = data.file_name || file.file_name
+      previewText.value = data.text || ''
+      previewDialogVisible.value = true
+    } catch (error) {
+      ElMessage.error(error.message || '无法打开文档预览')
+    }
+    return
+  }
+  const fileUrl = `http://127.0.0.1:8000/api/library/documents/${file.id}/content`
+  window.open(fileUrl, '_blank', 'noopener,noreferrer')
 }
 
 onMounted(() => {
   fetchFolders()
   fetchFiles(0)
+})
+
+onBeforeUnmount(() => {
+  if (searchTimer) clearTimeout(searchTimer)
 })
 </script>
 
@@ -265,6 +480,9 @@ onMounted(() => {
 .library-panel { width: 100%; height: 100%; display: flex; flex-direction: column; background: #ffffff; border-right: 1px solid #ebeef5; }
 .header { padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ebeef5; }
 .header h3 { margin: 0; font-size: 16px; color: #303133; }
+
+.search-container { padding: 12px 20px 9px; border-bottom: 1px solid #ebeef5; }
+.search-hint { display: block; margin-top: 5px; color: #a0a4ac; font-size: 11px; }
 
 .breadcrumb-container { padding: 12px 20px; background-color: #f8f9fa; border-bottom: 1px solid #ebeef5; }
 .breadcrumb-link { cursor: pointer; font-weight: 500; color: #606266; transition: color 0.2s; }
@@ -280,11 +498,19 @@ onMounted(() => {
   margin-bottom: 2px; transition: all 0.2s; 
 }
 .explorer-item:hover { background-color: #f5f7fa; }
-.item-info { display: flex; align-items: center; gap: 12px; overflow: hidden; }
+.item-info { display: flex; align-items: center; gap: 12px; overflow: hidden; min-width: 0; }
 .icon { font-size: 20px; }
 .folder-icon { color: #E6A23C; } 
 .pdf-icon { color: #F56C6C; }    
 .name { font-size: 14px; color: #303133; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px; user-select: none; }
+.file-summary { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.file-metadata { display: flex; align-items: center; gap: 7px; min-height: 20px; }
+.metric-text { color: #909399; font-size: 11px; white-space: nowrap; }
+.search-item { cursor: pointer; }
+.search-item:hover .name { color: #409EFF; }
+.search-path { color: #909399; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 230px; }
+.match-score { flex: 0 0 auto; margin-left: 10px; color: #909399; font-size: 11px; }
+.document-preview { max-height: 60vh; margin: 0; padding: 16px; overflow: auto; border-radius: 8px; background: #f7f8fa; color: #303133; font-family: inherit; font-size: 13px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
 
 /* 找到并修改 .file-item 样式 */
 .file-item { cursor: pointer; } /* ✨ 核心：让文件行也变成可点击的小手 */
