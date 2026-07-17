@@ -45,6 +45,11 @@
             <span>XMU_OJ</span>
           </el-menu-item>
 
+          <el-menu-item index="tronclass">
+            <el-icon><Connection /></el-icon>
+            <span>XMU_TronClass</span>
+          </el-menu-item>
+
           <el-menu-item index="settings">
             <el-icon><Setting /></el-icon>
             <span>Settings</span>
@@ -66,6 +71,7 @@
           <!-- ✨ 新增的组件渲染逻辑 -->
           <DeadlineBoard v-else-if="activeMenu === 'deadlines'" class="module-wrapper" />
           <OjView v-else-if="activeMenu === 'oj'" class="module-wrapper" />
+          <TronClassView v-else-if="activeMenu === 'tronclass'" class="module-wrapper" />
           <SettingsView v-else-if="activeMenu === 'settings'" class="module-wrapper" />
           <SystemView v-else-if="activeMenu === 'system'" class="module-wrapper" />
         </KeepAlive>
@@ -77,12 +83,13 @@
 <script setup>
 import { defineAsyncComponent, ref } from 'vue'
 // ✨ 引入新页面的图标和组件
-import { ChatSquare, Reading, School, Monitor, Setting, Calendar, Operation, DataBoard } from '@element-plus/icons-vue'
+import { ChatSquare, Reading, School, Monitor, Setting, Calendar, Operation, DataBoard, Connection } from '@element-plus/icons-vue'
 const DashboardView = defineAsyncComponent(() => import('./components/DashboardView.vue'))
 const ChatView = defineAsyncComponent(() => import('./components/ChatView.vue'))
 const LibraryPanel = defineAsyncComponent(() => import('./components/LibraryPanel.vue'))
 const CampusView = defineAsyncComponent(() => import('./components/CampusView.vue'))
 const OjView = defineAsyncComponent(() => import('./components/OjView.vue'))
+const TronClassView = defineAsyncComponent(() => import('./components/TronClassView.vue'))
 const SettingsView = defineAsyncComponent(() => import('./components/SettingsView.vue'))
 const DeadlineBoard = defineAsyncComponent(() => import('./components/DeadlineBoard.vue'))
 const SystemView = defineAsyncComponent(() => import('./components/SystemView.vue'))

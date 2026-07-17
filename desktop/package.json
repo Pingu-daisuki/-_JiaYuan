@@ -26,6 +26,7 @@
     "files": [
       "main.cjs",
       "preload.cjs",
+      "tronclass-preload.cjs",
       "runtime-utils.cjs",
       "splash.html",
       "package.json"

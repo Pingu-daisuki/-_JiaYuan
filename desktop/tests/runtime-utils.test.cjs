@@ -6,6 +6,8 @@ const {
   backendUrl,
   frontendLoadOptions,
   isTrustedNavigation,
+  isTrustedTronClassUrl,
+  resolveChatCompletionEndpoint,
   withApiBase,
 } = require('../runtime-utils.cjs')
 
@@ -35,4 +37,19 @@ test('Windows backend shutdown terminates the complete process tree', () => {
     command: 'taskkill', args: ['/PID', '1234', '/T', '/F'],
   })
   assert.deepEqual(backendTerminationPlan('linux', 1234), { signal: 'SIGTERM' })
+})
+
+test('TronClass window only trusts XMU and TronClass HTTPS pages', () => {
+  assert.equal(isTrustedTronClassUrl('https://lnt.xmu.edu.cn/course/1'), true)
+  assert.equal(isTrustedTronClassUrl('https://ids.xmu.edu.cn/auth'), true)
+  assert.equal(isTrustedTronClassUrl('https://foo.tronclass.com.cn/quiz'), true)
+  assert.equal(isTrustedTronClassUrl('http://lnt.xmu.edu.cn/'), false)
+  assert.equal(isTrustedTronClassUrl('https://xmu.edu.cn.evil.example/'), false)
+})
+
+test('model proxy requires HTTPS except for loopback services', () => {
+  assert.equal(resolveChatCompletionEndpoint('https://api.deepseek.com/v1'), 'https://api.deepseek.com/v1/chat/completions')
+  assert.equal(resolveChatCompletionEndpoint('https://api.deepseek.com/v1/chat/completions'), 'https://api.deepseek.com/v1/chat/completions')
+  assert.equal(resolveChatCompletionEndpoint('http://127.0.0.1:11434/v1/'), 'http://127.0.0.1:11434/v1/chat/completions')
+  assert.throws(() => resolveChatCompletionEndpoint('http://example.com/v1'), /HTTPS/)
 })

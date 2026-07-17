@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, shell, ipcMain } = require('electron')
+const { app, BrowserWindow, dialog, shell, ipcMain, net } = require('electron')
 const { spawn, spawnSync } = require('node:child_process')
 const fs = require('node:fs')
 const http = require('node:http')
@@ -8,6 +8,8 @@ const {
   backendUrl,
   frontendLoadOptions,
   isTrustedNavigation,
+  isTrustedTronClassUrl,
+  resolveChatCompletionEndpoint,
   withApiBase,
 } = require('./runtime-utils.cjs')
 
@@ -19,6 +21,9 @@ let mainWindow = null
 let backendProcess = null
 let backendOwnedByApp = false
 let backendLogStream = null
+let tronClassWindow = null
+let tronClassConfig = null
+let tronClassRunning = false
 
 const localRoot = path.resolve(
   process.env.JIAYUAN_DESKTOP_ROOT
@@ -98,6 +103,154 @@ ipcMain.handle('jiayuan:export-pdf', async (_event, payload = {}) => {
   } finally {
     printWindow.destroy()
   }
+})
+
+function sendTronClassStatus(status = {}) {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.webContents.send('tronclass:status-changed', {
+    open: Boolean(tronClassWindow && !tronClassWindow.isDestroyed()),
+    running: tronClassRunning,
+    ...status,
+  })
+}
+
+function openTronClassWindow(config = {}) {
+  tronClassConfig = { ...config }
+  if (tronClassWindow && !tronClassWindow.isDestroyed()) {
+    tronClassWindow.webContents.send('tronclass:configure', tronClassConfig)
+    tronClassWindow.show()
+    tronClassWindow.focus()
+    return tronClassWindow
+  }
+  tronClassWindow = new BrowserWindow({
+    width: 1320,
+    height: 860,
+    minWidth: 960,
+    minHeight: 640,
+    show: false,
+    title: 'XMU_TronClass · JiaYuan',
+    webPreferences: {
+      preload: path.join(__dirname, 'tronclass-preload.cjs'),
+      partition: 'persist:jiayuan-tronclass',
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+    },
+  })
+  tronClassWindow.removeMenu()
+  tronClassWindow.once('ready-to-show', () => tronClassWindow?.show())
+  tronClassWindow.webContents.on('did-finish-load', () => {
+    tronClassWindow?.webContents.send('tronclass:configure', tronClassConfig || {})
+    sendTronClassStatus({ url: tronClassWindow?.webContents.getURL() || '' })
+  })
+  tronClassWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isTrustedTronClassUrl(url)) return { action: 'allow' }
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  tronClassWindow.webContents.on('will-navigate', (event, url) => {
+    if (!isTrustedTronClassUrl(url)) {
+      event.preventDefault()
+      if (/^https?:\/\//i.test(url)) shell.openExternal(url)
+    }
+  })
+  tronClassWindow.on('closed', () => {
+    tronClassWindow = null
+    tronClassRunning = false
+    sendTronClassStatus({ open: false, running: false })
+  })
+  tronClassWindow.loadURL('https://lnt.xmu.edu.cn/')
+  sendTronClassStatus({ open: true, running: false, url: 'https://lnt.xmu.edu.cn/' })
+  return tronClassWindow
+}
+
+ipcMain.handle('tronclass:open', (_event, config = {}) => {
+  openTronClassWindow(config)
+  return { open: true }
+})
+
+ipcMain.handle('tronclass:close', () => {
+  tronClassWindow?.close()
+  return { open: false }
+})
+
+ipcMain.handle('tronclass:status', () => ({
+  open: Boolean(tronClassWindow && !tronClassWindow.isDestroyed()),
+  running: tronClassRunning,
+  url: tronClassWindow && !tronClassWindow.isDestroyed() ? tronClassWindow.webContents.getURL() : '',
+}))
+
+ipcMain.handle('tronclass:command', (_event, payload = {}) => {
+  if (!tronClassWindow || tronClassWindow.isDestroyed()) throw new Error('请先打开 TronClass 窗口')
+  tronClassConfig = { ...(tronClassConfig || {}), ...(payload.config || {}) }
+  tronClassWindow.webContents.send('tronclass:command', String(payload.command || ''), tronClassConfig)
+  tronClassWindow.show()
+  return { sent: true }
+})
+
+ipcMain.on('tronclass:solver-log', (event, message) => {
+  if (!tronClassWindow || event.sender !== tronClassWindow.webContents) return
+  mainWindow?.webContents.send('tronclass:log', String(message).slice(0, 2000))
+})
+
+ipcMain.on('tronclass:solver-status', (event, status = {}) => {
+  if (!tronClassWindow || event.sender !== tronClassWindow.webContents) return
+  tronClassRunning = Boolean(status.running)
+  sendTronClassStatus({ ...status, open: true })
+})
+
+ipcMain.handle('tronclass:complete', async (event, payload = {}) => {
+  if (!tronClassWindow || event.sender !== tronClassWindow.webContents) throw new Error('非法的模型请求来源')
+  const model = payload.config || {}
+  const base = String(model.baseUrl || '').trim().replace(/\/+$/, '')
+  let endpoint
+  try { endpoint = resolveChatCompletionEndpoint(base) }
+  catch (error) { throw new Error(error.message.includes('HTTPS') ? '远程模型接口必须使用 HTTPS' : '模型 Base URL 格式不正确') }
+  if (!model.apiKey || !model.modelId) throw new Error('模型密钥或模型 ID 为空')
+  const messages = Array.isArray(payload.messages) ? payload.messages.slice(-20).map(item => ({
+    role: item.role === 'assistant' ? 'assistant' : 'user',
+    content: String(item.content || '').slice(0, 30000),
+  })) : []
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 60000)
+  try {
+    const response = await net.fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${model.apiKey}` },
+      body: JSON.stringify({
+        model: model.modelId,
+        messages: [
+          { role: 'system', content: '你是课程练习辅助工具。分析选择题或判断题，并在末尾严格使用 <answer>答案</answer> 输出，例如 <answer>A</answer>、<answer>BC</answer> 或 <answer>对</answer>。' },
+          ...messages,
+        ],
+        temperature: 0.1,
+      }),
+      signal: controller.signal,
+    })
+    const text = await response.text()
+    if (!response.ok) {
+      let detail = text.slice(0, 500)
+      try {
+        const parsed = JSON.parse(text)
+        const errorPayload = Array.isArray(parsed) ? parsed[0]?.error : parsed?.error
+        detail = String(errorPayload?.message || errorPayload || detail)
+      } catch { /* 使用原始响应摘要 */ }
+      const guidance = response.status === 401
+        ? '当前 API Key 无效，或绑定的服务账号已被删除/禁用。请在 Settings 更换密钥或重新启用服务账号。'
+        : response.status === 403
+          ? '当前 API Key 没有调用该模型的权限，请检查模型权限与账单状态。'
+          : response.status === 429
+            ? '请求额度或频率已达到上限，请稍后重试或更换模型。'
+            : '请检查模型地址、模型 ID 和服务状态。'
+      return { error: `模型接口 HTTP ${response.status}：${detail} ${guidance}`, status: response.status }
+    }
+    const data = JSON.parse(text)
+    return { content: String(data?.choices?.[0]?.message?.content || '') }
+  } catch (error) {
+    if (error.name === 'AbortError') throw new Error('模型请求超过 60 秒')
+    throw error
+  } finally { clearTimeout(timeout) }
 })
 
 
