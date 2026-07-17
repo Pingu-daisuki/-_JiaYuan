@@ -2,14 +2,14 @@
   <div class="settings-container">
     <div class="header">
       <h2>⚙️ 引擎与模型设置</h2>
-      <p class="subtitle">配置你的大模型 API 与本地文档解析策略</p>
+      <p class="subtitle">为您分虑 愿您无忧</p>
     </div>
 
     <el-card class="setting-card" shadow="hover">
       <template #header>
         <div class="card-header">
           <el-icon><Document /></el-icon>
-          <span>本地复杂文档解析引擎</span>
+          <span>文档解析引擎</span>
         </div>
       </template>
       
@@ -90,7 +90,18 @@
       <template #footer>
         <el-button v-if="initDone" type="primary" @click="initDialogVisible = false">完成</el-button>
         <el-button v-else-if="initFailed" type="warning" @click="initDialogVisible = false">关闭</el-button>
-        <span v-else class="init-progress-tip">正在下载，请勿关闭此窗口...</span>
+        <div v-else class="init-running-actions">
+          <span class="init-progress-tip">
+            {{ initCancelling ? '正在停止并清理子进程...' : '初始化正在进行，可随时安全取消' }}
+          </span>
+          <el-button
+            type="danger"
+            plain
+            :loading="initCancelling"
+            :disabled="initCancelling"
+            @click="cancelEngineInit"
+          >取消初始化</el-button>
+        </div>
       </template>
     </el-dialog>
 
@@ -98,7 +109,7 @@
       <template #header>
         <div class="card-header">
           <el-icon><Cpu /></el-icon>
-          <span>大模型网关配置 (LLM Registry)</span>
+          <span>API配置</span>
         </div>
       </template>
 
@@ -191,9 +202,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { Document, Cpu, Select, Close, Plus, CirclePlus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { apiFetch } from '../api/client'
 
 // --- 状态数据 ---
 const pdfEngine = ref('pymupdf')
@@ -206,6 +218,9 @@ const initDialogVisible = ref(false)
 const initLogs = ref([])
 const initDone = ref(false)
 const initFailed = ref(false)
+const initCancelling = ref(false)
+const initializingEngine = ref(null)
+let initAbortController = null
 
 // --- ✨ 新增：GPU/CPU 运行设备选择 ---
 const useGpu = ref(false) // 默认 CPU，避免在 CUDA/PyTorch 不匹配时初始化失败
@@ -227,7 +242,7 @@ const newModel = ref({
 // --- 方法：查询某引擎在后端是否已经完成过初始化（同时拿到已使用的运行设备）---
 const checkEngineStatus = async (engineValue) => {
   try {
-    const res = await fetch(`http://127.0.0.1:8000/api/engine/status/${engineValue}`)
+    const res = await apiFetch(`/api/engine/status/${engineValue}`)
     const data = await res.json()
     if (!res.ok || typeof data.initialized !== 'boolean') {
       throw new Error(data.detail || `HTTP ${res.status}`)
@@ -244,10 +259,17 @@ const runEngineInit = async (engineValue, gpuChoice) => {
   initLogs.value = []
   initDone.value = false
   initFailed.value = false
+  initCancelling.value = false
+  initializingEngine.value = engineValue
   initDialogVisible.value = true
+  const controller = new AbortController()
+  initAbortController = controller
 
   try {
-    const res = await fetch(`http://127.0.0.1:8000/api/engine/init/${engineValue}?use_gpu=${gpuChoice}`)
+    const res = await apiFetch(
+      `/api/engine/init/${engineValue}?use_gpu=${gpuChoice}`,
+      { signal: controller.signal, timeoutMs: 0 }
+    )
     if (!res.ok || !res.body) {
       throw new Error(`后端初始化接口返回 HTTP ${res.status}`)
     }
@@ -302,10 +324,43 @@ const runEngineInit = async (engineValue, gpuChoice) => {
       ElMessage.success(`${engineValue.toUpperCase()} 初始化完成（${verifiedStatus.device === 'cuda' ? 'GPU' : 'CPU'}），可以开始使用！`)
     }
   } catch (e) {
+    if (e?.name === 'AbortError') {
+      initLogs.value.push('[取消] 初始化连接已关闭，后端正在回收相关进程。')
+      initFailed.value = true
+      pdfEngine.value = previousEngine.value
+      ElMessage.info(`${engineValue.toUpperCase()} 初始化已取消`)
+      return
+    }
     initLogs.value.push(`[前端异常] 连接后端失败: ${e}`)
     initFailed.value = true
     pdfEngine.value = previousEngine.value
     ElMessage.error('无法连接后端，初始化失败')
+  } finally {
+    if (initAbortController === controller) initAbortController = null
+    if (initializingEngine.value === engineValue) initializingEngine.value = null
+    initCancelling.value = false
+  }
+}
+
+// 用户不必被迫等待硬超时：先通知后端设置取消事件，再断开当前流。
+// 后端无论收到显式取消还是浏览器断流，都会在 finally 中回收完整子进程树。
+const cancelEngineInit = async () => {
+  const engineValue = initializingEngine.value
+  if (!engineValue || initCancelling.value) return
+  initCancelling.value = true
+  initLogs.value.push(`[取消] 正在请求安全停止 ${engineValue.toUpperCase()} 初始化...`)
+
+  try {
+    const res = await apiFetch(`/api/engine/cancel/${engineValue}`, {
+      method: 'POST'
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`)
+    initLogs.value.push(`[取消] ${data.message || '后端已收到取消请求'}。`)
+  } catch (e) {
+    initLogs.value.push(`[取消警告] 后端取消接口未确认：${e}；将通过断开流触发兜底清理。`)
+  } finally {
+    initAbortController?.abort()
   }
 }
 
@@ -450,6 +505,16 @@ onMounted(async () => {
     }
   }
 })
+
+onBeforeUnmount(() => {
+  // 用户切走设置页面时不让不可见的安装任务继续占用网络和磁盘。
+  if (initializingEngine.value) {
+    void apiFetch(`/api/engine/cancel/${initializingEngine.value}`, {
+      method: 'POST'
+    }).catch(() => {})
+    initAbortController?.abort()
+  }
+})
 </script>
 
 <style scoped>
@@ -543,6 +608,13 @@ onMounted(async () => {
 }
 .init-log-line { white-space: pre-wrap; word-break: break-all; }
 .init-progress-tip { color: #E6A23C; font-size: 13px; }
+.init-running-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  width: 100%;
+}
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }

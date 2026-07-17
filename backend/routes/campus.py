@@ -1,37 +1,64 @@
 # backend/routes/campus.py
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import asyncio
 import json
+import threading
 from datetime import datetime
 from core.db import get_db_connection
-from core.campus_core import XmuNativeBot
+from core.campus_core import XmuNativeBot, extract_rollcalls
+from core.tasks import (
+    create_task,
+    get_task,
+    register_cancel_callback,
+    track_async_stream,
+)
 
 router = APIRouter()
+_CAMPUS_TABLE_LOCK = threading.Lock()
 
 def ensure_campus_table():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("PRAGMA table_info(campus_config)")
-    columns = [col[1] for col in cursor.fetchall()]
-    if columns and "real_name" not in columns:
-        conn.execute("DROP TABLE campus_config")
-        
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS campus_config (
-            student_id TEXT PRIMARY KEY,
-            password TEXT NOT NULL,
-            real_name TEXT DEFAULT '',
-            mode TEXT DEFAULT 'default',
-            check_interval INTEGER DEFAULT 5,
-            answer_threshold INTEGER DEFAULT 0,
-            time_slots TEXT DEFAULT '[]',
-            updated_at TEXT DEFAULT (datetime('now', 'localtime'))
-        );
-    ''')
-    conn.commit()
-    conn.close()
+    """原地升级身份表；任何旧版认证资料都不得因字段升级被删除。"""
+    with _CAMPUS_TABLE_LOCK:
+        conn = get_db_connection()
+        try:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS campus_config (
+                    student_id TEXT PRIMARY KEY,
+                    password TEXT NOT NULL,
+                    real_name TEXT DEFAULT '',
+                    mode TEXT DEFAULT 'default',
+                    check_interval INTEGER DEFAULT 5,
+                    answer_threshold INTEGER DEFAULT 0,
+                    time_slots TEXT DEFAULT '[]',
+                    updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+                );
+            ''')
+            columns = {
+                row[1] for row in conn.execute("PRAGMA table_info(campus_config)").fetchall()
+            }
+            missing_columns = {
+                "real_name": "TEXT DEFAULT ''",
+                "mode": "TEXT DEFAULT 'default'",
+                "check_interval": "INTEGER DEFAULT 5",
+                "answer_threshold": "INTEGER DEFAULT 0",
+                "time_slots": "TEXT DEFAULT '[]'",
+                # SQLite 不能通过 ALTER TABLE 添加非恒定时间函数默认值。
+                "updated_at": "TEXT DEFAULT NULL",
+            }
+            for column_name, definition in missing_columns.items():
+                if column_name not in columns:
+                    conn.execute(
+                        f"ALTER TABLE campus_config ADD COLUMN {column_name} {definition}"
+                    )
+            conn.execute(
+                "UPDATE campus_config SET updated_at = datetime('now', 'localtime') "
+                "WHERE updated_at IS NULL OR updated_at = ''"
+            )
+            conn.commit()
+        finally:
+            conn.close()
 
 # 📝 请求模型拆分
 class AccountReq(BaseModel):
@@ -40,8 +67,8 @@ class AccountReq(BaseModel):
 
 class StrategyReq(BaseModel):
     mode: str = "default"
-    check_interval: int = 5
-    answer_threshold: int = 0
+    check_interval: int = Field(default=5, ge=1, le=300)
+    answer_threshold: int = Field(default=0, ge=0)
     time_slots: list = []
 
 # 💾 1. 获取所有账号
@@ -111,17 +138,64 @@ def delete_account(student_id: str):
     return {"message": "账号及策略已彻底清除"}
 
 # 🚀 5. 指定学号启动监控 (流式接口保持不变)
+@router.post("/rollcall/tasks/{student_id}", status_code=201)
+def create_rollcall_task(student_id: str):
+    ensure_campus_table()
+    conn = get_db_connection()
+    try:
+        account = conn.execute(
+            "SELECT real_name FROM campus_config WHERE student_id = ?", (student_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    if not account:
+        raise HTTPException(status_code=404, detail="身份资料不存在")
+    task_id = create_task(
+        "rollcall_monitor",
+        f"RollCall 监控：{account['real_name'] or student_id}",
+        payload={"student_id": student_id},
+        retryable=False,
+    )
+    return {"task_id": task_id}
+
+
 @router.get("/stream_sign/{student_id}")
-async def stream_sign(student_id: str):
+async def stream_sign(student_id: str, task_id: str | None = None):
     ensure_campus_table()
     conn = get_db_connection()
     config = conn.execute("SELECT * FROM campus_config WHERE student_id = ?", (student_id,)).fetchone()
     conn.close()
+    if not config:
+        raise HTTPException(status_code=404, detail=f"找不到学号 {student_id} 的配置")
+    if task_id:
+        task = get_task(task_id)
+        if (
+            not task
+            or task["task_type"] != "rollcall_monitor"
+            or task["payload"].get("student_id") != student_id
+        ):
+            raise HTTPException(status_code=404, detail="RollCall 任务不存在")
+        if task["status"] != "queued":
+            raise HTTPException(status_code=409, detail="RollCall 任务已经启动或结束")
+    else:
+        task_id = create_task(
+            "rollcall_monitor",
+            f"RollCall 监控：{config['real_name'] or student_id}",
+            payload={"student_id": student_id},
+            retryable=False,
+        )
+    cancel_event = threading.Event()
+    register_cancel_callback(task_id, cancel_event.set)
+
+    async def sleep_or_cancel(seconds: int) -> bool:
+        remaining = max(0, int(seconds))
+        while remaining > 0 and not cancel_event.is_set():
+            step = min(1, remaining)
+            await asyncio.sleep(step)
+            remaining -= step
+        return cancel_event.is_set()
 
     async def generate_log():
-        if not config:
-            yield f"data: [错误] ❌ 找不到学号 {student_id} 的配置。\n\n"
-            return
         bot = XmuNativeBot(student_id=config["student_id"], password=config["password"], mode=config["mode"],
                            check_interval=config["check_interval"], answer_threshold=config["answer_threshold"], time_slots=json.loads(config["time_slots"]))
         yield f"data: [系统] 🚀 厦大原生监控引擎启动 | 守护对象: {config['real_name']} ({student_id})\n\n"
@@ -135,27 +209,37 @@ async def stream_sign(student_id: str):
             url = "https://lnt.xmu.edu.cn/api/radar/rollcalls"
             query_count = 0
             while True:
+                if cancel_event.is_set():
+                    yield "data: [系统] 监控任务已安全停止。\n\n"
+                    return
                 if not bot.is_active_time():
                     yield f"data: [休眠] 💤 当前不在课程活跃时段内，引擎默默潜伏中...\n\n"
-                    await asyncio.sleep(60)
+                    if await sleep_or_cancel(60):
+                        continue
                     continue
 
                 query_count += 1
                 try:
-                    resp = await asyncio.to_thread(bot.session.get, url)
-                    rollcalls = resp.json().get('rollcalls', [])
+                    resp = await asyncio.to_thread(bot.session.get, url, timeout=10)
+                    resp.raise_for_status()
+                    rollcalls = extract_rollcalls(resp.json())
                     if query_count % max(1, (30 // bot.check_interval)) == 0:
                         yield f"data: [监控] 📡 巡航中 | 累计扫描: {query_count}次 | 状态: 正常\n\n"
 
                     for rc in rollcalls:
                         if rc.get('status') == 'absent':
                             title = rc.get('course_title', '未知课程')
-                            rid = rc.get('rollcall_id')
+                            rid = rc.get('rollcall_id') or rc.get('rollcallId') or rc.get('id')
                             yield f"data: [警报] 🚨 监测到漏签课程: {title}!\n\n"
-                            answered_count = rc.get('answered_count', rc.get('attendee_count', 0))
-                            if bot.answer_threshold > 0 and answered_count < bot.answer_threshold:
-                                yield f"data: [潜伏] 🤫 已签 {answered_count} 人，未达防风控阀值 {bot.answer_threshold} 人，继续潜伏...\n\n"
-                                continue
+                            if bot.answer_threshold > 0:
+                                answered_count = await asyncio.to_thread(bot.get_answered_count, rc)
+                                if answered_count is None:
+                                    yield "data: [阈值] ⚠️ 暂时无法读取已签到人数，本轮不会冒险签到。\n\n"
+                                    continue
+                                if answered_count < bot.answer_threshold:
+                                    yield f"data: [潜伏] 🤫 已签 {answered_count} 人，未达防风控阈值 {bot.answer_threshold} 人，继续潜伏...\n\n"
+                                    continue
+                                yield f"data: [阈值] ✅ 已签 {answered_count} 人，达到设定阈值 {bot.answer_threshold} 人。\n\n"
                             
                             yield f"data: [行动] ⚡ 发动定点攻破程序...\n\n"
                             if rc.get('is_radar'): success, msg = await asyncio.to_thread(bot.send_radar, rid)
@@ -164,8 +248,12 @@ async def stream_sign(student_id: str):
                             yield f"data: [战果] {'🏆' if success else '⚠️'} {msg}\n\n"
                 except Exception as e:
                      yield f"data: [网络] 📡 信号轻微抖动: {str(e)[:40]}\n\n"
-                await asyncio.sleep(bot.check_interval)
+                await sleep_or_cancel(bot.check_interval)
         except Exception as e:
             yield f"data: [致命错误] 引擎因外部摩擦断开: {str(e)}\n\n"
 
-    return StreamingResponse(generate_log(), media_type="text/event-stream")
+    return StreamingResponse(
+        track_async_stream(task_id, generate_log(), failure_tokens=("[致命错误]",)),
+        media_type="text/event-stream",
+        headers={"X-Task-ID": task_id},
+    )

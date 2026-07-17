@@ -9,7 +9,9 @@ import ipaddress
 import os
 import re
 import socket
+import threading
 import uuid
+from contextlib import closing
 from urllib.parse import urljoin, urlparse
 
 import httpx
@@ -21,6 +23,7 @@ from core.processor import (
     insufficient_evidence_response,
     process_and_vectorize_document_stream,
     retrieve_relevant_context,
+    update_vector_course_metadata,
 )
 from core.db import calculate_file_sha256, get_db_connection, update_file_ingestion
 from core.document_parser import (
@@ -33,12 +36,65 @@ from core.document_parser import (
     validate_document_file,
 )
 from core.paths import DATA_DIR, UPLOAD_DIR
+from core.tasks import create_task, list_tasks, register_retry_handler, track_stream
 
 router = APIRouter()
 UPLOAD_CHUNK_SIZE = 1024 * 1024
 MAX_WEB_BYTES = 10 * 1024 * 1024
 MAX_WEB_REDIRECTS = 5
 WEB_TIMEOUT_SECONDS = 20
+
+
+def _tracked_ingestion_response(stream, *, file_id: int, title: str, engine: str, retryable: bool = True):
+    task_id = create_task(
+        "document_ingestion",
+        title,
+        payload={"file_id": file_id, "engine": engine},
+        retryable=retryable,
+    )
+    return StreamingResponse(
+        track_stream(task_id, stream),
+        media_type="text/event-stream",
+        headers={"X-Task-ID": task_id},
+    )
+
+
+def _assert_course_exists(course_id: int):
+    if course_id == 0:
+        return
+    conn = get_db_connection()
+    try:
+        exists = conn.execute("SELECT 1 FROM courses WHERE id = ?", (course_id,)).fetchone()
+    finally:
+        conn.close()
+    if not exists:
+        raise HTTPException(status_code=404, detail=f"目标文件夹不存在: {course_id}")
+
+
+def _move_reused_file_to_course(file_record: dict, course_id: int):
+    previous_course_id = file_record.get("course_id") or 0
+    if previous_course_id == course_id:
+        return file_record
+    update_vector_course_metadata(file_record["id"], course_id)
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            "UPDATE knowledge_files SET course_id = ?, updated_at = datetime('now', 'localtime') "
+            "WHERE id = ?",
+            (None if course_id == 0 else course_id, file_record["id"]),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        try:
+            update_vector_course_metadata(file_record["id"], previous_course_id)
+        except Exception:
+            pass
+        raise
+    finally:
+        conn.close()
+    file_record["course_id"] = None if course_id == 0 else course_id
+    return file_record
 
 
 def _normalize_engine(engine: str):
@@ -244,6 +300,44 @@ class UrlImportRequest(BaseModel):
     engine: str = "pymupdf"
 
 
+class ImportPreflightRequest(BaseModel):
+    file_name: str
+    file_size: int = 0
+    file_sha256: str | None = None
+    course_id: int = 0
+
+
+@router.post("/preflight")
+def import_preflight(req: ImportPreflightRequest):
+    """导入前检查重复文件和同名历史版本，并返回透明的粗略耗时估算。"""
+    _assert_course_exists(req.course_id)
+    extension = os.path.splitext(req.file_name)[1].lower()
+    estimated_pages = max(1, round(req.file_size / (350 * 1024))) if extension == ".pdf" else None
+    estimated_seconds = max(2, round(req.file_size / (1024 * 1024) * (2.2 if extension == ".pdf" else 0.7)))
+    with closing(get_db_connection()) as conn:
+        duplicate = None
+        if req.file_sha256:
+            row = conn.execute(
+                "SELECT id,file_name,course_id,status,updated_at FROM knowledge_files "
+                "WHERE file_sha256=? ORDER BY status='ready' DESC, updated_at DESC LIMIT 1",
+                (req.file_sha256,),
+            ).fetchone()
+            duplicate = dict(row) if row else None
+        versions = [dict(row) for row in conn.execute(
+            "SELECT id,file_name,course_id,status,file_sha256,updated_at FROM knowledge_files "
+            "WHERE lower(file_name)=lower(?) ORDER BY updated_at DESC LIMIT 8",
+            (req.file_name,),
+        ).fetchall()]
+    return {
+        "exact_duplicate": duplicate,
+        "same_name_versions": versions,
+        "estimate": {
+            "pages": estimated_pages,
+            "seconds": estimated_seconds,
+            "disk_bytes": max(req.file_size, int(req.file_size * 1.35)),
+            "is_estimate": True,
+        },
+    }
 async def _assert_public_web_url(url: str):
     parsed = urlparse(url)
     if parsed.scheme.lower() not in {"http", "https"}:
@@ -333,6 +427,7 @@ def _web_snapshot_filename(source_url: str, file_sha256: str, page_title: str = 
 
 @router.post("/import-url")
 async def import_web_url(req: UrlImportRequest):
+    _assert_course_exists(req.course_id)
     raw_html, final_url = await _download_web_page(req.url)
     try:
         decoded_html = decode_text_bytes(raw_html)
@@ -363,12 +458,16 @@ async def import_web_url(req: UrlImportRequest):
         source_url=final_url,
     )
     if registered["reused"]:
-        return StreamingResponse(
+        registered["reused"] = _move_reused_file_to_course(registered["reused"], req.course_id)
+        return _tracked_ingestion_response(
             _reuse_ready_file_stream(registered["reused"], req.course_id),
-            media_type="text/event-stream",
+            file_id=registered["reused"]["id"],
+            title=f"导入网页：{filename}",
+            engine=engine,
+            retryable=False,
         )
 
-    return StreamingResponse(
+    return _tracked_ingestion_response(
         process_and_vectorize_document_stream(
             registered["file_path"],
             registered["stored_filename"],
@@ -380,7 +479,9 @@ async def import_web_url(req: UrlImportRequest):
             source_kind="url",
             source_url=final_url,
         ),
-        media_type="text/event-stream",
+        file_id=registered["file_id"],
+        title=f"导入网页：{filename}",
+        engine=engine,
     )
 
 @router.post("/upload")
@@ -389,6 +490,7 @@ async def upload_document(
     course_id: int = Form(0),
     engine: str = Form("pymupdf")
 ):
+    _assert_course_exists(course_id)
     filename = _safe_document_filename(file.filename)
     engine = _normalize_engine(engine)
     staging_path, file_sha256 = _write_staged_upload(file)
@@ -413,12 +515,16 @@ async def upload_document(
         validation["mime_type"],
     )
     if registered["reused"]:
-        return StreamingResponse(
+        registered["reused"] = _move_reused_file_to_course(registered["reused"], course_id)
+        return _tracked_ingestion_response(
             _reuse_ready_file_stream(registered["reused"], course_id),
-            media_type="text/event-stream",
+            file_id=registered["reused"]["id"],
+            title=f"导入资料：{filename}",
+            engine=engine,
+            retryable=False,
         )
 
-    return StreamingResponse(
+    return _tracked_ingestion_response(
         process_and_vectorize_document_stream(
             registered["file_path"],
             registered["stored_filename"],
@@ -428,16 +534,13 @@ async def upload_document(
             document_type=registered["document_type"],
             mime_type=registered["mime_type"],
         ),
-        media_type="text/event-stream"
+        file_id=registered["file_id"],
+        title=f"导入资料：{filename}",
+        engine=engine,
     )
 
 
-@router.post("/files/{file_id}/reindex")
-async def reindex_document(
-    file_id: int,
-    engine: str = Form("pymupdf"),
-):
-    """为已有资料重建统一的位置元数据，而不删除原始文档。"""
+def _prepare_reindex_stream(file_id: int, engine: str, *, allow_interrupted: bool = False):
     conn = get_db_connection()
     try:
         file_record = conn.execute(
@@ -453,7 +556,10 @@ async def reindex_document(
     if not os.path.isfile(resolved_path):
         raise HTTPException(status_code=404, detail="原始文档不存在，无法重建索引")
     if file_record["status"] in {"uploaded", "parsing", "indexing"}:
-        raise HTTPException(status_code=409, detail=f"文件正处于 {file_record['status']} 状态")
+        if not allow_interrupted:
+            raise HTTPException(status_code=409, detail=f"文件正处于 {file_record['status']} 状态")
+        delete_vectors_for_file(file_id)
+        update_file_ingestion(file_id, "failed", error_message="正在恢复上次中断的入库任务")
 
     course_id = file_record["course_id"] if file_record["course_id"] is not None else 0
     engine = _normalize_engine(engine)
@@ -481,8 +587,7 @@ async def reindex_document(
         started_at=None,
         completed_at=None,
     )
-    return StreamingResponse(
-        process_and_vectorize_document_stream(
+    return file_record, engine, process_and_vectorize_document_stream(
             resolved_path,
             file_record["file_name"],
             file_id,
@@ -493,9 +598,55 @@ async def reindex_document(
             source_kind=file_record["source_kind"] or "upload",
             source_url=file_record["source_url"],
             replace_existing=True,
-        ),
-        media_type="text/event-stream",
+        )
+
+
+@router.post("/files/{file_id}/reindex")
+async def reindex_document(
+    file_id: int,
+    engine: str = Form("pymupdf"),
+):
+    """为已有资料重建统一的位置元数据，而不删除原始文档。"""
+    file_record, engine, stream = _prepare_reindex_stream(file_id, engine)
+    return _tracked_ingestion_response(
+        stream,
+        file_id=file_id,
+        title=f"重新索引：{file_record['file_name']}",
+        engine=engine,
     )
+
+
+def _retry_ingestion_task(payload: dict) -> str:
+    file_id = int(payload["file_id"])
+    if any(
+        task["status"] in {"queued", "running", "cancelling"}
+        and task["task_type"] == "document_ingestion"
+        and int(task["payload"].get("file_id", -1)) == file_id
+        for task in list_tasks(500)
+    ):
+        raise RuntimeError("该文件已有入库任务正在运行")
+    file_record, engine, stream = _prepare_reindex_stream(
+        file_id,
+        str(payload.get("engine") or "pymupdf"),
+        allow_interrupted=True,
+    )
+    task_id = create_task(
+        "document_ingestion",
+        f"恢复索引：{file_record['file_name']}",
+        payload={"file_id": file_id, "engine": engine},
+        retryable=True,
+    )
+    tracked_stream = track_stream(task_id, stream)
+
+    def consume():
+        for _ in tracked_stream:
+            pass
+
+    threading.Thread(target=consume, name=f"ingestion-task-{task_id[:8]}", daemon=True).start()
+    return task_id
+
+
+register_retry_handler("document_ingestion", _retry_ingestion_task)
 
 
 @router.get("/files/{file_id}/status")

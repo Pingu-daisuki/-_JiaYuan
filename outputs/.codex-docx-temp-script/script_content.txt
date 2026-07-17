@@ -1,0 +1,198 @@
+[COVER_TITLE]厦大 JiaYuan 小学期课程汇报
+[COVER_SUBTITLE]逐字讲解稿
+[META]配套文件：厦大_JiaYuan_小学期课程汇报_校园功能补充版.pptx
+[META]建议汇报时长：28—32 分钟｜正文可直接照读，附录用于答辩追问
+[COVER_NOTE]表达原则：只讲能够由代码、运行结果和测试复现的内容；不确定的外部接口能力，明确说明当前边界。
+[PAGEBREAK]
+[H1]使用说明
+[P]这份讲稿按照 PPT 的 14 页顺序编排。标有“台上逐字讲稿”的内容可以直接说；方括号中的文字是动作提示，不需要念出来。正文已经把页面中出现的专有名词、函数名和文件职责融入讲解。最后的“答辩追问速查”和“复现清单”不需要主动展示，老师追问时再使用。
+[P]建议把函数名读成英文名称，再补一句中文含义。例如，process_and_vectorize_document_stream 可以读作“process and vectorize document stream，也就是文档处理并向量化的流式函数”。文件路径只在第一次出现时完整说明，后面可以只说文件名。
+[NOTE]如果现场时间被压缩到 20 分钟，可优先保留第 4、5、6、10、11、12、13 页；第 3、7、8、9 页各删减一半。不要删第 14 页的边界说明。
+[PAGEBREAK]
+[H1]第 1 页｜项目封面：厦大 JiaYuan
+[TIME]建议用时：40 秒
+[H2]台上逐字讲稿
+[CUE][面向老师，停顿一秒]
+[P]各位老师好，我汇报的项目是“厦大 JiaYuan”。它的核心定位，是一个本地优先、可检索、可追溯的课程知识库，同时把签到、Deadline 和 OJ 这几类校园任务整合到同一个桌面端入口里。
+[P]这里的 RAG 是 Retrieval-Augmented Generation 的缩写，中文通常叫“检索增强生成”。它不是直接让大模型凭记忆回答，而是先从我导入的课程资料中检索证据，再把证据和问题一起交给模型生成答案。这样做的重点不是让回答更长，而是让答案能落回具体文件、页码或者幻灯片位置，方便核验。
+[P]项目的主要技术栈是 Vue 3、FastAPI、RAG 和 Electron。Vue 3 负责界面；FastAPI 负责后端接口和业务编排；RAG 负责资料检索与引用；Electron 把前后端封装成 Windows 桌面应用。接下来我会先讲项目解决什么问题，再讲核心架构、RAG 链路和三个校园看板。
+[CUE][切到下一页]
+[PAGEBREAK]
+[H1]第 2 页｜项目定位：从资料堆积到可核验答案
+[TIME]建议用时：1 分 15 秒
+[H2]台上逐字讲稿
+[P]我先说明项目要解决的实际问题。课程资料往往散落在 PDF、Word、PPT、Markdown、网页和聊天记录里。传统的文件名搜索只能找到文件，不能直接定位“某个公式在哪一页”“老师对某个概念怎么定义”。扫描版 PDF 还没有可选中的文字层，普通搜索也读不到。
+[P]第二个问题是答案难以核验。如果只把问题交给通用大模型，回答可能语言流畅，但我无法确认它依据的是哪份课程材料。这个项目因此采用 local-first，也就是“本地优先”的设计：原始文件、课程目录、解析结果、向量索引和 Deadline 缓存默认保存在本机；联网只发生在用户主动调用模型接口、导入网页或访问校园平台的时候。
+[P]“可追溯”是这个项目的重要约束。每一个文档片段都会保存 file_id、course_id、section、location_type 和 location_index 等元数据。file_id 表示文件记录的唯一标识；course_id 表示所属课程；section 表示章节；location_type 表示位置类型，例如 page 或 slide；location_index 表示具体页码或幻灯片序号。回答展示引用时，不只给文件名，还能给出“第几页”或“第几张幻灯片”。
+[P]所以，这个项目并不是简单的聊天界面，而是一条从文件校验、内容解析、分块向量化、混合检索，到带引用生成答案的完整链路。
+[CUE][过渡]下一页先看用户能够直接使用的六个工作区。
+[PAGEBREAK]
+[H1]第 3 页｜六个工作区与前端状态管理
+[TIME]建议用时：1 分 45 秒
+[H2]台上逐字讲稿
+[P]前端把功能分成六个工作区。第一，XMU_RAG 用于拖拽文件或通过 URL 导入资料，并在指定课程或指定文件范围内提问。回答采用流式输出，同时展示引用来源。对应的主要界面文件是 frontend 目录下的 ChatView.vue。
+[P]第二，XMU_Library 是资料库。它提供课程树、模糊搜索、移动、删除、预览和重新索引。主要界面是 LibraryPanel.vue，后端接口集中在 backend/routes/library.py。这里的移动不只是修改界面目录，还会同步 SQLite 中的 course_id，以及 Chroma 向量元数据中的 course_id，避免文件显示在新课程里，但检索还落在旧课程里的数据不一致。
+[P]第三，XMU_RollCall 是签到模块。它负责身份认证、签到策略、时间段控制和流式日志。第四，XMU_DeadLines 会同步待办和考试，并按照剩余时间显示紧急程度。第五，XMU_OJ 会读取题目、调用模型生成代码、提交并轮询评测结果。第六，Settings 用于设置模型服务地址、API Key、模型名称，以及 PyMuPDF、Marker、MinerU 等解析引擎。
+[P]这六个工作区在 frontend/App.vue 中统一挂载。App.vue 用 activeMenu 记录当前菜单，并通过 handleMenuSelect 切换。外层使用 Vue 的 KeepAlive 组件。KeepAlive 的含义是：切换页面时，不销毁暂时不可见的组件实例，而是把它缓存起来。因此用户从 RAG 页面切到 Deadline 再切回来时，当前对话、筛选条件和局部状态仍然保留。它解决的是前端交互状态问题，不等同于把数据永久写入磁盘；真正需要持久化的数据仍然由 SQLite、Chroma 或 localStorage 保存。
+[P]这页可以把整个产品理解成“一套公共底座，加六个任务入口”。后面我会先讲公共底座，再分别展开具体功能。
+[PAGEBREAK]
+[H1]第 4 页｜总体架构：Vue、FastAPI、本地存储与 Electron
+[TIME]建议用时：2 分钟
+[H2]台上逐字讲稿
+[P]这一页是项目的总体架构。最上层是 Vue 3 前端，使用 Element Plus 作为组件库。聊天和导入日志使用浏览器的 ReadableStream：前端通过 fetch 发起请求，再用 response.body.getReader 逐块读取字节，用 TextDecoder 解码成文字，因此后端每产生一段内容，界面就可以立即显示，不需要等待整个任务结束。
+[P]中间层是 FastAPI。入口文件是 backend/main.py。main.py 创建 FastAPI 应用，配置跨域规则，注册七组路由，并在启动时执行 recover_interrupted_ingestions 和 backfill_ready_file_metrics。前一个函数会恢复上次异常退出留下的处理中状态，后一个函数会补齐旧文件缺失的统计字段。开发环境默认由 Uvicorn 监听 127.0.0.1 的 8000 端口；桌面版通过环境变量 JIAYUAN_PORT 改为 8765。
+[P]路由层按职责拆分：chat.py 负责模型对话，rag.py 负责导入和检索，library.py 负责资料库，campus.py 负责签到，deadlines.py 负责待办，oj.py 负责 OJ，engine.py 负责解析引擎初始化。路由层尽量只做参数校验和流程编排，具体算法放在 backend/core 下，例如 processor.py、document_parser.py、campus_core.py 和 oj_core.py。
+[P]本地数据分成三类。SQLite 保存结构化关系数据，例如课程、文件状态、校园账号配置和 Deadline；Chroma 保存文档片段的向量与检索元数据；uploads、models 和 runtime 等目录保存原文件、模型与私有 Python 运行时。SQLite 擅长事务、条件查询和状态管理，Chroma 擅长向量相似度检索，两者不是互相替代，而是各自负责适合的数据。
+[P]最外层是 Electron。desktop/main.cjs 负责启动窗口、准备私有 Python、启动 FastAPI、轮询健康检查并加载前端静态文件。开发模式是 5173 端口的 Vue 开发服务器加 8000 端口的后端；打包后没有 Vue 开发服务器，Electron 直接加载 frontend/dist，后端固定在本机 8765。这个区分能避免把开发端口误当成桌面版依赖。
+[CUE][过渡]下面进入系统最核心的 RAG 数据链路，先从文档怎样进入知识库开始。
+[PAGEBREAK]
+[H1]第 5 页｜RAG 入库：校验、解析、分块与向量化
+[TIME]建议用时：2 分 45 秒
+[H2]台上逐字讲稿
+[P]RAG 入库的入口在 backend/routes/rag.py。用户上传文件后，upload_document 路由不会一次性把整个文件读进内存，而是调用 _write_staged_upload，以 1 MiB 为单位分块写入临时文件，同时计算 SHA-256。SHA-256 是内容摘要算法，同一份二进制内容会得到相同摘要，所以它可以用于发现重复文件。这里的上限是 100 MiB，超过上限会在继续占用资源之前终止。
+[P]文件落盘前会调用 backend/core/document_parser.py 中的 validate_document_file。它不是只检查扩展名，而是同时检查扩展名、声明的 MIME 类型和文件签名。例如 PDF 必须以百分号 PDF 的魔数开头；DOCX 和 PPTX 本质上是 ZIP 容器，所以还要检查 Content_Types.xml 和必要的内部 XML。代码也会拒绝路径穿越、加密压缩包、过高压缩比和异常大的解压体积，以降低伪装文件和 ZIP 炸弹风险。
+[P]校验通过后，_register_staged_document 使用 SQLite 的 BEGIN IMMEDIATE 开启写事务，检查是否已有相同 SHA-256 且状态为 ready 的文件。如果已有可用副本，就复用记录；如果没有，就用 os.replace 原子地把临时文件移动到正式路径，并创建 knowledge_files 记录。原子移动的意义是：系统要么看到完整文件，要么还看不到文件，不会看到只写了一半的目标文件。
+[P]随后进入 backend/core/processor.py 的 process_and_vectorize_document_stream。这个函数一边执行，一边以 text/event-stream 返回日志。它先把状态从 uploaded 更新为 parsing，再调用解析器生成统一的 segment。每个 segment 至少包含 text、section、location_type 和 location_index。统一结构非常重要，因为后面的分块与索引不需要知道原文件是 PDF、DOCX 还是 PPTX。
+[P]build_document_chunks 再把 segment 切成大约 500 个字符的块，相邻块重叠 50 个字符，也就是步长 450。重叠的目的，是避免一个定义或公式刚好被切在边界两侧。分块不会跨越页或幻灯片等位置单元，这样引用页码才不会含糊。500 和 50 是当前工程参数，不是普适定律；复现时应该根据资料语言、模型上下文和检索效果调参。
+[P]分块完成后，状态进入 indexing。程序使用 BAAI/bge-small-zh-v1.5 把文本编码成向量，并批量写入 Chroma 的 xmu_course_materials_v2 集合。每条向量同时保存 file_id、course_id、文件名、章节和位置元数据。写入前会按 file_id 删除旧向量，写入过程受 VECTOR_WRITE_LOCK 保护，避免多个任务同时改同一集合。
+[P]全部成功后，update_file_ingestion 把状态更新为 ready，并写入页数、分块数、解析引擎等指标。如果中途失败，_mark_ingestion_failed 会删除这个 file_id 对应的残留向量，再把 SQLite 状态记为 failed。也就是说，系统用“状态机加补偿清理”维持 SQLite 和 Chroma 的一致性。状态转移被限制为 uploaded、parsing、indexing、ready 或 failed，非法跳转会被 backend/core/db.py 拒绝。
+[CUE][过渡]入库解决了“资料怎样变成可检索证据”，下一页讲“问题怎样找到最合适的三条证据”。
+[PAGEBREAK]
+[H1]第 6 页｜RAG 问答：混合检索、MMR、重排与引用
+[TIME]建议用时：3 分 15 秒
+[H2]台上逐字讲稿
+[P]问答链路由 frontend/ChatView.vue 发起。buildRetrievePayload 会把 query、course_id 和 file_ids 组成检索请求。query 是用户问题；course_id 和 file_ids 是检索范围，防止在用户没有选择的课程里误找资料。后端 rag.py 的 retrieve 路由最终调用 processor.py 中的 retrieve_relevant_context。
+[P]第一阶段是向量召回。问题和文档块通过同一个 BGE 模型变成向量，Chroma 先取最相近的 10 个候选。向量检索擅长语义相近，但对课程编号、函数名和精确术语不一定稳定，所以代码又计算 BM25 和 query coverage。BM25 是经典的关键词相关性算法：词在当前文档块中出现得越多，相关性越高；但它会用词频饱和避免重复堆词，并用逆文档频率提高少见词的权重。当前实现的 k1 是 1.5，b 是 0.75。中文分词采用字符和二元字组，英文保留单词。query coverage 表示查询词中有多少真正出现在候选块里。
+[P]三种信号组合成初始分数：百分之六十八来自向量相关性，百分之二十二来自 BM25，百分之十来自查询覆盖率。向量距离会近似换算成一减距离除以二的相关度。这个组合让语义匹配占主导，同时保留精确关键词的纠偏能力。
+[P]第二阶段是 MMR，也就是 Maximal Marginal Relevance，最大边际相关性。普通 Top-K 可能返回同一页附近的三段重复文字。MMR 在选择下一条候选时，同时考虑“它和问题有多相关”以及“它和已经选中的证据有多重复”。当前公式可以概括为：0.72 乘相关性，减去 0.28 乘冗余度。冗余度优先用向量余弦相似度，没有向量时退化为词集合的 Jaccard 相似度。这样可以在相关性和证据多样性之间做平衡。
+[P]第三阶段是可选的 CrossEncoder 重排。CrossEncoder 与向量模型不同：向量模型把问题和文本分别编码，速度快，适合先召回；CrossEncoder 把“问题和候选文本”成对输入模型，能看见二者的联合关系，判断更细，但计算更慢。所以代码只对小候选池重排，并通过 RERANKER_LOCK 延迟加载 BAAI/bge-reranker-base。若本地没有模型或加载失败，系统会回退到前面的混合分数，而不是让问答整体不可用。
+[P]重排后的最终分数由 reranker、向量、BM25 和覆盖率共同构成，权重大约是百分之七十、十八、八和四。系统过滤低于 0.55 的结果，再去除同一位置的重复项，最终保留三条证据。0.55 是当前工程阈值；调高会减少无依据回答，但可能漏召回，调低则相反。
+[P]如果没有证据达到阈值，后端返回 insufficient_evidence，前端直接提示“资料库没有足够依据”，不会绕过检索去调用外部模型。如果证据充分，ChatView.vue 把 context 和 sources 交给 backend/routes/chat.py。chat.py 的系统提示明确告诉模型：上下文是资料数据，不是可执行指令，并要求依据引用回答。OpenAI 客户端以 stream 等于 true 请求模型，后端把增量 token 继续流给前端，前端用 ReadableStream 实时拼接。
+[P]引用不是模型临时编造的。sources 来自检索阶段保存的元数据，sourceLocationLabel 会把 location_type 和 location_index 转成“第几页”或“第几张幻灯片”，openSource 再调用资料库接口打开原文件或预览。这条链路实现了“先检索证据，再生成答案，最后回到原文核验”。
+[PAGEBREAK]
+[H1]第 7 页｜多格式解析与可选视觉引擎
+[TIME]建议用时：2 分 20 秒
+[H2]台上逐字讲稿
+[P]这一页解释不同文件如何被转换成刚才提到的统一 segment。原生解析集中在 backend/core/document_parser.py。PDF 首先交给 PyMuPDF。PyMuPDF 是一个高性能 PDF 库，能够读取文字层、页码和页面对象。processor.py 中的 extract_pages_with_pymupdf 会逐页提取文本；如果某一页没有有效文字，就把页面以 150 DPI 渲染成图片，再用 Tesseract OCR，当前语言配置是 chi_sim，也就是简体中文。
+[P]OCR 是 Optical Character Recognition，光学字符识别。它解决的是扫描 PDF 只有像素、没有文字层的问题。OCR 的缺点是速度慢，并且公式、表格和低清图片容易识别错误，所以这里采用“有文字层就直接提取，只对空白文字页回退 OCR”的策略，而不是对所有页强制 OCR。
+[P]DOCX 通过 python-docx 解析。extract_docx_document 会按文档顺序读取段落和表格，以标题段落划分 section，并把表格转换成 Markdown 形式。PPTX 通过 python-pptx 解析，extract_pptx_document 会按照页码和形状的 top、left 坐标排序文本，还会读取表格与备注，位置类型记为 slide。Markdown 按标题层级切段；HTML 或网页先用 BeautifulSoup 移除 script、style、iframe、form 等不安全或无关节点，并删除事件属性和 JavaScript 链接，再提取正文、标题与表格。
+[P]对于复杂版式，项目还支持 Marker 和 MinerU 两个可选引擎。它们更适合多栏、公式、图片和复杂表格，但依赖更大，所以没有强制绑定在基础流程里。backend/core/engine_init.py 的 init_engine_stream 负责安装依赖、准备模型、输出心跳并处理超时或取消。
+[P]引擎初始化完成前，代码会调用 _make_probe_pdf 生成一份没有文字层的真实扫描测试 PDF，再由 _run_probe 调用对应 CLI 解析。只有命令成功退出，而且产出了非空 Markdown，系统才写入 initialized 标志。这样判断的是“引擎确实能完成一次任务”，而不只是“某个包已经安装”。若进程卡住、超时或用户取消，程序会终止进程树并清理临时文件。
+[P]最后，不论走哪种解析器，输出都归一化为 text、section、location_type 和 location_index。这个中间表示把“格式差异”隔离在解析层，让后续分块、索引和引用逻辑保持一致。
+[PAGEBREAK]
+[H1]第 8 页｜桌面化交付：私有 Python、健康检查与打包
+[TIME]建议用时：1 分 50 秒
+[H2]台上逐字讲稿
+[P]为了让项目不依赖用户电脑已经安装 Python，我在桌面版中准备了私有运行时。desktop/package.json 定义构建脚本和 electron-builder 配置；构建阶段先生成 frontend/dist，再把 Python 运行时、后端代码、BGE 模型和清单文件作为 extraResources 打入安装包。
+[P]桌面入口是 desktop/main.cjs。preparePrivatePython 会读取运行时 manifest，也就是描述版本和文件状态的清单。若本机用户目录中的运行时版本不一致，就重新解压 runtime 压缩包。prepareSeedModels 以相同思路准备初始 BGE 模型。运行数据不写进安装目录，而是放在百分号 LOCALAPPDATA 百分号下的 JiaYuan 目录，分为 data、models、runtime、logs 和 profile，应用升级时不会覆盖用户资料。
+[P]startBackend 使用私有 python 执行 backend/main.py，并通过环境变量传入数据目录、模型目录和 8765 端口。随后 waitForBackendHealth 持续请求 /api/health；只有健康检查成功，主窗口才加载前端。这样可以避免用户看到界面已经打开，但后端还没有就绪的竞态问题。
+[P]Electron 窗口启用了 contextIsolation，关闭 nodeIntegration，并保持 sandbox 和 webSecurity。也就是说，普通网页脚本不能直接获得 Node.js 和文件系统权限。应用还使用单实例锁，防止重复启动多个后端。退出时 stopBackend 在 Windows 上终止整个子进程树，避免 Python 或 OCR 子进程残留。
+[P]最终由 electron-builder 生成 x64 的 NSIS 安装程序，采用按用户安装。桌面化的关键不是简单套一个窗口，而是把运行时、模型、端口、用户数据和进程生命周期一起管理起来。
+[PAGEBREAK]
+[H1]第 9 页｜质量、可靠性与当前测试边界
+[TIME]建议用时：1 分 25 秒
+[H2]台上逐字讲稿
+[P]这一页从工程质量看项目。当前后端大约包含 37 个源文件、接近 7990 行代码，并拆成七组主要路由。前端可以完成生产构建，说明 Vue 组件、依赖图和静态资源链路能够闭合。
+[P]安全方面，上传链路同时检查扩展名、MIME、魔数和压缩包结构；URL 导入只允许 HTTP 和 HTTPS，拒绝内嵌账号、localhost 和非公网 IP，解析 DNS 后也会检查地址是否 global，并限制重定向次数、内容类型和下载大小。这一部分主要防止 SSRF，也就是服务器端请求伪造：攻击者诱导后端去访问本机或内网地址。
+[P]可靠性方面，文件注册使用原子移动，数据库状态更新受事务保护；向量写入失败会补偿删除；应用启动时会把上次异常中断的 uploaded、parsing 或 indexing 任务恢复为 failed，并清理孤儿向量。引擎子进程有心跳、停滞检测、超时和取消处理。
+[P]但测试覆盖目前仍然有限。backend/tests/test_engine_init.py 有四个场景，分别验证子进程输出和退出码、停滞进程终止、取消终止，以及 pip 安装过程的可见进度和网络限制。RAG 召回质量、路由异常、SQLite 与 Chroma 一致性，以及完整桌面端 E2E 还需要补齐。这里我会明确区分“已经实现的防护”和“仍需用测试证明的稳定性”。
+[PAGEBREAK]
+[H1]第 10 页｜校园平台访问的统一逻辑
+[TIME]建议用时：2 分 20 秒
+[H2]台上逐字讲稿
+[P]接下来讲签到、OJ 和 Deadline 三个看板。它们在界面上是三个功能，但访问畅课和 XMUOJ 时遵循同一套底层逻辑：先读取本地配置，再建立各自的登录会话，随后在这个会话中调用业务接口，最后把长任务状态流式返回前端。
+[P]本地配置保存在 SQLite 的 campus_config 表，记录学号、密码、姓名、模式、轮询间隔、阈值和时间段。当前版本是明文保存，这是后面会说明的安全边界。畅课与 XMUOJ 必须使用独立会话，因为它们是不同域名、不同 Cookie 和不同认证协议，不能把一个 requests.Session 混用到另一个平台。
+[P]畅课逻辑封装在 backend/core/campus_core.py 的 XmuNativeBot 类。login 方法通过 xmulogin，传入 type 等于 3、用户名和密码，获取已经登录的 requests.Session。Session 会自动维护 Cookie，所以后续 fetch_deadlines、send_code 或 send_radar 都沿用同一认证上下文，不需要每次重新登录。
+[P]XMUOJ 逻辑封装在 backend/core/oj_core.py 的 OJClient。它先 GET 首页，让服务器下发 CSRF Cookie，再把 token 放入请求头并 POST 到 /api/login。CSRF 是 Cross-Site Request Forgery，跨站请求伪造。服务器要求 Cookie 和请求头中的 token 对应，是为了证明请求来自已经打开过本站的合法客户端，而不是第三方网页偷偷发起。
+[P]这两套核心客户端主要基于 requests，是同步阻塞库；而 FastAPI 路由运行在 asyncio 事件循环中。如果直接调用耗时的 requests，整个事件循环会被占住，其他请求也会等待。因此 campus.py、deadlines.py 和 oj.py 使用 asyncio.to_thread，把同步网络调用放到工作线程执行，主事件循环仍然可以响应健康检查和其他用户操作。
+[P]长流程的日志使用 SSE，也就是 Server-Sent Events。后端返回 media_type 为 text/event-stream，并持续发送“data 冒号 内容，再加两个换行”的事件帧；前端用 EventSource 接收。SSE 是服务器到浏览器的单向长连接，适合签到轮询和 OJ 评测日志。它和前面聊天用的 ReadableStream 目的相似，但接口不同：EventSource 自动解析事件帧，而 fetch 的 ReadableStream 需要前端手动读取和解码。
+[P]在这个统一框架下，三个看板的差别只在于各自调用哪些接口和怎样处理返回结果。下面分别说明。
+[PAGEBREAK]
+[H1]第 11 页｜签到看板：策略轮询、数字码与雷达计算
+[TIME]建议用时：3 分钟
+[H2]台上逐字讲稿
+[P]签到接口位于 backend/routes/campus.py。add_account 在保存账号前会先调用 XmuNativeBot.login，并请求 /api/profile 验证身份，避免把不可用账号写入配置。stream_sign 是核心 SSE 路由。它创建生成器，登录畅课，读取策略，然后循环执行“时间判断、查询签到、筛选目标、执行签到、休眠”。前端 CampusView.vue 用 EventSource 连接这个路由，把每条 data 事件追加到日志区域。
+[P]时间控制由 is_active_time 完成。默认策略可以使用预设时段，也可以由用户配置 time_slots。check_interval 控制两次查询之间的秒数；answer_threshold 表示发现签到后等待到什么阈值再执行。它们的作用是明确轮询频率和执行时机，避免无限高频请求给平台和本机带来额外负载。
+[P]每轮查询会请求 /api/radar/rollcalls，并只处理尚未作答的项目。数字签到由 send_code 处理。它先请求 student_rollcalls，再用 _find_number_code 在返回的嵌套 JSON 中递归寻找数字码。递归深度限制为 10，避免异常数据造成无限递归。找到号码后，PUT 到 answer_number_rollcall，并附带 UUID 形式的 deviceId。
+[P]雷达签到由 send_radar 处理。接口不会直接提供一个坐标，而是返回当前位置到指定点的距离。代码选择两个探测点，得到两个圆：第一个圆的圆心是 P1、半径是 d1；第二个圆的圆心是 P2、半径是 d2。真实位置理论上位于两个圆的交点。
+[P]为了计算交点，代码先在厦门这样的小范围内使用局部平面近似。以某个参考纬度为原点，把经纬度差转换为米：横向 x 约等于经度差的弧度乘地球半径，再乘参考纬度的余弦；纵向 y 约等于纬度差的弧度乘地球半径。地球半径取 6371000 米。设两个圆心的距离为 D，那么从第一个圆心沿圆心连线到交点投影的距离 a，等于 d1 的平方减 d2 的平方加 D 的平方，再除以 2D；垂直高度 h 等于 d1 平方减 a 平方的平方根。基点加上圆心连线的垂直单位向量乘正负 h，就得到两个候选交点。
+[P]程序会检查 D 是否为零、两圆是否相离、是否包含，以及根号内是否为负，避免无解时继续计算。得到两个候选坐标后依次提交，并根据平台响应判断结果。这个算法依赖接口返回的距离精度，也依赖小区域平面近似；探测点过近、测距噪声过大或接口协议变化都会降低可靠性。
+[P]从工程角度，这一模块展示的是“认证会话、策略调度、SSE 日志、递归数据解析和两圆定位”怎样组合。实际使用必须限定在本人账号和课程允许的规则内；平台接口或课程要求变化时，程序也需要相应调整，不能把当前实现理解为长期稳定的官方接口。
+[PAGEBREAK]
+[H1]第 12 页｜OJ 看板：CSRF 登录、生成代码、提交与轮询
+[TIME]建议用时：2 分 45 秒
+[H2]台上逐字讲稿
+[P]OJ 看板的前端是 frontend/OjView.vue，后端入口是 backend/routes/oj.py 的 stream_solve。它同样使用 SSE，把进入比赛、读取题目、生成代码、提交和评测状态逐步输出到界面。
+[P]核心客户端 OJClient 位于 backend/core/oj_core.py。login 先 GET XMUOJ 首页获取 CSRF Cookie，再 POST /api/login。登录后，enter_contest 进入指定比赛；get_problem_list 读取题目列表和个人状态。代码会跳过已经通过的题目，只处理未完成题目。
+[P]build_prompt 把题目标题、描述、输入输出、样例和语言要求整理成模型提示，并要求只返回代码。call_llm 是模型适配入口：如果配置为 Gemini，就调用 generateContent；如果是 OpenAI 兼容服务，就调用 chat/completions。_strip_markdown_fence 会去掉模型可能附带的三个反引号代码围栏，防止把 Markdown 标记一并提交给评测机。
+[P]submit 把代码和语言提交到 OJ。如果服务器返回冷却时间，代码会从响应中提取等待秒数，等待后重试一次。提交成功后得到 submission id，poll_result 再循环查询评测状态。oj_core.py 用 STATUS_NAME 把数字状态映射为等待、编译、运行、Accepted、Wrong Answer、Compile Error 等可读文字。若出现编译错误，路由会把错误信息写入日志；每道题之间按照配置的 interval 暂停。
+[P]这里要区分“模型生成”和“OJ 判题”两个职责。模型只负责提出候选代码；真正的正确性由 OJ 的编译器、测试数据和资源限制决定。因此系统必须提交并轮询结果，不能把模型输出本身当作正确答案。要提升成功率，可以把编译错误和样例失败作为下一轮修复上下文，但当前页面展示的主链路是一次生成、提交和结果轮询。
+[P]当前实现有两个明确边界。第一，oj_core.py 的 login 仍使用固定字符串 123456，没有正确使用本地账号配置中的 OJ 密码；第二，模型 HTTP 请求和 OJ Session 目前设置 verify 等于 false，跳过 TLS 证书校验。这两点适合开发联调，不适合正式交付。修复方式是为 OJ 密码设置独立加密字段，并恢复证书校验或配置可信 CA，而不是长期关闭验证。
+[PAGEBREAK]
+[H1]第 13 页｜Deadline 看板：缓存优先、主动同步与紧急度
+[TIME]建议用时：1 分 50 秒
+[H2]台上逐字讲稿
+[P]Deadline 看板的路由在 backend/routes/deadlines.py，前端是 frontend/DeadlineBoard.vue。接口形式是 /deadlines/{student_id}，并带一个 sync 查询参数。sync 等于 false 时直接调用 backend/core/db.py 的 get_deadlines，从 SQLite 返回缓存，页面打开速度快，也不需要每次访问畅课。sync 等于 true 时才读取账号，创建 XmuNativeBot，登录后调用 fetch_deadlines 请求畅课的 /api/todos。
+[P]fetch_deadlines 会验证 HTTP 状态、JSON 格式和关键字段，再把平台返回的数据规范化为统一的标题、课程、截止时间、URL 和来源。同步网络请求通过 asyncio.to_thread 执行。拿到完整结果后，save_deadlines 在事务中先删除该学生的旧缓存，再批量写入新结果。因为写入发生在一次数据库事务里，界面不会看到一半新数据、一半旧数据。
+[P]前端根据截止时间计算状态。getStatusText 区分已过期、24 小时内、72 小时内和更晚；getTimelineType 与 getStatusClass 再把状态映射成时间线颜色和样式。这属于展示层派生数据，不需要额外存入数据库。用户点击“同步”时访问远端，平时读取本地缓存，这是一种 cache-aside，也就是旁路缓存模式：业务代码明确决定什么时候读缓存、什么时候刷新缓存。
+[P]Deadline 看板与签到共用畅课登录能力，但职责不同。签到是持续轮询并执行动作；Deadline 是用户触发的一次性同步，然后长期从本地读取。这也是为什么它们可以复用 XmuNativeBot，却保留独立路由和前端组件。
+[PAGEBREAK]
+[H1]第 14 页｜总结、边界与下一步
+[TIME]建议用时：1 分 40 秒
+[H2]台上逐字讲稿
+[P]最后总结。这个项目已经打通四条主要链路：第一，课程资料从安全校验、解析、分块到 Chroma 索引；第二，问题从混合召回、MMR 和重排到带位置引用的流式回答；第三，畅课和 XMUOJ 从认证会话到签到、Deadline 和 OJ 业务；第四，前后端、私有 Python 和本地模型通过 Electron 打包成可安装的 Windows 应用。
+[P]我认为项目目前最有价值的地方，是把“能运行”进一步推进到“能解释和能核验”：文件有状态机，失败有补偿清理；答案有来源位置；引擎初始化有真实探针；桌面端有健康检查和进程生命周期管理。
+[P]同时，我不会把当前版本描述成已经完成生产化。现有边界包括：校园账号仍以明文保存；OJ 登录有固定密码；部分 HTTPS 请求关闭证书校验；前端 API_BASE 仍有开发端口硬编码；打包后的前端体积还可以通过动态 import 进行代码分割；测试目前集中在引擎进程管理，RAG、路由、E2E 和安装升级场景需要补齐。
+[P]下一步我会按风险排序：先使用 Windows DPAPI 或系统 keyring 加密凭据，恢复 TLS 校验；再把 API_BASE 收敛到统一配置；随后补充 RAG 单元测试、FastAPI 接口测试和 Playwright 桌面端流程；最后完成安装包签名和升级验证。以上就是我的汇报，谢谢各位老师。
+[CUE][停顿，进入提问]
+[PAGEBREAK]
+[H1]答辩追问速查｜不需要主动讲
+[H2]1. 为什么不只用向量检索？
+[P]可以回答：向量检索适合语义近似，但对函数名、课程编号和短关键词可能不稳定，所以我保留 BM25 和查询覆盖率作为精确匹配信号。向量负责“意思像”，BM25 负责“词真的出现”，再用 MMR 去重、CrossEncoder 精排。
+[H2]2. 为什么分块是 500，重叠是 50？
+[P]可以回答：这是当前中文课程资料的工程起点。500 字符能保留一段相对完整的定义，又不会让单块过长；50 字符重叠降低边界截断。它不是理论最优值，复现时我会用命中率、引用完整度和延迟做参数实验。
+[H2]3. 0.55 阈值如何理解？
+[P]可以回答：它是重排后证据接受阈值。调高会更保守，减少无依据回答但增加漏检；调低会增加召回但更容易把弱相关片段送给模型。当前值是工程折中，后续应通过标注问题集做 ROC 或精确率、召回率评估。
+[H2]4. SQLite 和 Chroma 为什么要同时存在？
+[P]可以回答：SQLite 管理课程、文件状态、账号配置和 Deadline 等关系数据，支持事务；Chroma 管理高维向量和相似度搜索。file_id 是二者之间的连接键。一致性通过状态机、写锁和失败补偿维护。
+[H2]5. async 和 asyncio.to_thread 有什么区别？
+[P]可以回答：async 函数只有在内部主动 await 非阻塞操作时才不会占住事件循环。requests 是同步阻塞库，即使从 async 路由调用也会阻塞，所以用 asyncio.to_thread 把它交给工作线程。它没有把 requests 变成异步协议，只是避免阻塞主事件循环。
+[H2]6. 为什么用 SSE，不用 WebSocket？
+[P]可以回答：这些任务主要是服务器持续向前端发送日志，方向单一，SSE 基于普通 HTTP，EventSource 支持简单、断线行为也容易处理。WebSocket 更适合频繁双向实时通信，这里没有必要增加协议复杂度。
+[H2]7. 引用为什么可信？
+[P]可以回答：页码或幻灯片序号在解析阶段写入 chunk 元数据，检索阶段直接返回 sources，模型只负责组织答案，不负责生成引用位置。点击引用时再由 library.py 打开对应原文件或预览，因此可以回到原文核验。
+[H2]8. 如果写 Chroma 成功、写 SQLite 失败怎么办？
+[P]可以回答：process_and_vectorize_document_stream 的异常路径会按 file_id 删除向量，再把状态记为 failed；启动时 recover_interrupted_ingestions 也会清理异常中断状态。严格来说 SQLite 与 Chroma 不支持跨库原子事务，所以这里采用可重试状态机和补偿事务，而不是声称绝对原子。
+[H2]9. 为什么畅课和 OJ 必须分开 Session？
+[P]可以回答：两者域名、Cookie、CSRF 和登录接口不同。Session 是某个站点的认证上下文，混用会造成 Cookie 污染和错误的请求头。它们只共享本地配置入口和异步包装，不共享认证状态。
+[H2]10. CSRF token 的作用是什么？
+[P]可以回答：浏览器或 Session 会自动带 Cookie，攻击站点可能利用这一点冒充用户发请求。服务端要求请求头再提供一个只有合法页面或会话能取得的 token，并与 Cookie 匹配，从而降低跨站伪造风险。
+[H2]11. 雷达计算为什么会有两个解？
+[P]可以回答：两个圆一般相交于两个点，仅靠两次距离测量无法唯一确定左右哪一个。当前实现会得到两个候选并依次验证。若需要数学上唯一定位，应增加第三个独立测距点，用三边定位并通过最小二乘处理噪声。
+[H2]12. 项目当前最大的安全风险是什么？
+[P]可以回答：第一是 campus_config 明文凭据；第二是 OJ 固定密码；第三是 verify=false；第四是校园接口属于非稳定外部依赖。优先修复方案是 DPAPI 或 keyring、独立凭据字段、恢复 TLS 验证、最小权限和日志脱敏。
+[H2]13. 如果让我现场复现 RAG，我会怎么做？
+[P]可以回答：先启动 FastAPI 和 Vue，创建课程，上传一个含明确页码的 PDF；观察文件状态从 uploaded 到 parsing、indexing、ready；检查 SQLite 的 knowledge_files 和 Chroma 中相同 file_id 的分块；然后用一个能在原文定位的问题请求 /api/rag/retrieve，确认 top3 的来源位置；最后调用 /api/chat 验证流式回答和引用点击。
+[H2]14. 测试还应怎样补？
+[P]可以回答：单元测试覆盖文件签名、ZIP 安全、分块边界、BM25、MMR 和雷达几何；接口测试覆盖上传失败、重复 SHA、检索不足、校园接口超时；集成测试验证 SQLite 与 Chroma 清理；E2E 用 Playwright 覆盖导入、问答、引用和桌面启动退出。
+[H2]15. 如果老师直接问开发过程或工具使用
+[P]可以回答：如实说明我使用了现代开发工具辅助实现和排查，但我对最终架构、代码核验、运行调试和复现路径负责。然后立刻给出可验证证据，例如指出具体文件、函数、数据状态和测试方法。不要把回答停在“用了什么工具”，而要落回“我能解释什么、修改什么、怎样证明它正确”。
+[PAGEBREAK]
+[H1]复现清单｜汇报前自测
+[H2]一、开发环境启动
+[NUM]在 backend 目录安装 requirements.txt 中的依赖，确认 Python 能导入 fastapi、chromadb、PyMuPDF、python-docx、python-pptx 和 sentence-transformers。
+[NUM]在 frontend 目录安装 npm 依赖并启动 Vue 开发服务器；后端运行 backend/main.py，确认 /api/health 返回正常。
+[NUM]确认开发环境前端端口是 5173，后端是 8000；桌面版后端是 8765，不要混淆。
+[H2]二、RAG 最小闭环
+[NUM]创建课程并上传一份可搜索 PDF，观察 SSE 日志和状态迁移。
+[NUM]在 SQLite 中核对 knowledge_files 的 file_id、sha256、ingestion_status、chunk_count；在 Chroma 中用相同 file_id 查询向量数量。
+[NUM]调用 /api/rag/retrieve，核对 course_id 或 file_ids 过滤、top3 文本和 location_index；再调用 /api/chat 验证有证据才访问模型。
+[NUM]故意上传伪装文件或中断一次任务，验证 validate_document_file、failed 状态和向量清理。
+[H2]三、校园模块最小闭环
+[NUM]先只执行账号验证和只读接口，确认畅课 Session 与 XMUOJ Session 分离。
+[NUM]用浏览器开发者工具观察 SSE：响应类型应为 text/event-stream，每条消息以 data: 开头并以空行结束。
+[NUM]Deadline 先测试 sync=false 读取缓存，再测试 sync=true 刷新；OJ 先修复固定密码和 TLS 校验后再做真实提交。
+[H2]四、桌面版最小闭环
+[NUM]执行前端生产构建和运行时打包，检查 runtime manifest、模型压缩包和 electron-builder 的 extraResources。
+[NUM]安装后确认数据写入 LOCALAPPDATA 的 JiaYuan，而不是安装目录；启动时先出现健康检查，再出现主界面；退出后检查没有残留 Python 进程。
+[NOTE]汇报前至少亲自完成一次“上传资料—检索—引用打开—退出重启后数据仍在”的全链路演示。遇到老师追问时，优先讲亲自验证过的行为，再讲尚未实现的改进方案。

@@ -15,14 +15,18 @@
           text-color="#303133"
           active-text-color="#409EFF"
         >
+          <el-menu-item index="dashboard">
+            <el-icon><DataBoard /></el-icon>
+            <span>学习仪表盘</span>
+          </el-menu-item>
           <el-menu-item index="chat">
             <el-icon><ChatSquare /></el-icon>
-            <span>文献对话 (RAG)</span>
+            <span>XMU_RAG</span>
           </el-menu-item>
 
           <el-menu-item index="library">
             <el-icon><Reading /></el-icon>
-            <span>我的图书馆</span>
+            <span>XMU_Library</span>
           </el-menu-item>
 
           <el-menu-item index="campus">
@@ -43,20 +47,27 @@
 
           <el-menu-item index="settings">
             <el-icon><Setting /></el-icon>
-            <span>引擎与模型设置</span>
+            <span>Settings</span>
+          </el-menu-item>
+
+          <el-menu-item index="system">
+            <el-icon><Operation /></el-icon>
+            <span>运行与数据</span>
           </el-menu-item>
         </el-menu>
       </el-aside>
 
       <el-main class="content-area">
         <KeepAlive>
-          <ChatView v-if="activeMenu === 'chat'" class="module-wrapper" />
+          <DashboardView v-if="activeMenu === 'dashboard'" class="module-wrapper" @navigate="handleMenuSelect" @open-conversation="openConversation" />
+          <ChatView v-else-if="activeMenu === 'chat'" :requested-conversation-id="requestedConversationId" class="module-wrapper" />
           <LibraryPanel v-else-if="activeMenu === 'library'" class="module-wrapper" />
           <CampusView v-else-if="activeMenu === 'campus'" class="module-wrapper" />
           <!-- ✨ 新增的组件渲染逻辑 -->
           <DeadlineBoard v-else-if="activeMenu === 'deadlines'" class="module-wrapper" />
           <OjView v-else-if="activeMenu === 'oj'" class="module-wrapper" />
           <SettingsView v-else-if="activeMenu === 'settings'" class="module-wrapper" />
+          <SystemView v-else-if="activeMenu === 'system'" class="module-wrapper" />
         </KeepAlive>
       </el-main>
     </el-container>
@@ -64,20 +75,27 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { defineAsyncComponent, ref } from 'vue'
 // ✨ 引入新页面的图标和组件
-import { ChatSquare, Reading, School, Monitor, Setting, Calendar } from '@element-plus/icons-vue' 
-import ChatView from './components/ChatView.vue' 
-import LibraryPanel from './components/LibraryPanel.vue'
-import CampusView from './components/CampusView.vue'
-import OjView from './components/OjView.vue'
-import SettingsView from './components/SettingsView.vue'
-import DeadlineBoard from './components/DeadlineBoard.vue' // ✨ 导入新增的 DeadlineBoard 组件
+import { ChatSquare, Reading, School, Monitor, Setting, Calendar, Operation, DataBoard } from '@element-plus/icons-vue'
+const DashboardView = defineAsyncComponent(() => import('./components/DashboardView.vue'))
+const ChatView = defineAsyncComponent(() => import('./components/ChatView.vue'))
+const LibraryPanel = defineAsyncComponent(() => import('./components/LibraryPanel.vue'))
+const CampusView = defineAsyncComponent(() => import('./components/CampusView.vue'))
+const OjView = defineAsyncComponent(() => import('./components/OjView.vue'))
+const SettingsView = defineAsyncComponent(() => import('./components/SettingsView.vue'))
+const DeadlineBoard = defineAsyncComponent(() => import('./components/DeadlineBoard.vue'))
+const SystemView = defineAsyncComponent(() => import('./components/SystemView.vue'))
 
-const activeMenu = ref('chat')
+const activeMenu = ref('dashboard')
+const requestedConversationId = ref('')
 
 const handleMenuSelect = (index) => {
   activeMenu.value = index
+}
+const openConversation = (id) => {
+  requestedConversationId.value = id
+  activeMenu.value = 'chat'
 }
 </script>
 

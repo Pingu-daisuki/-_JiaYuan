@@ -1,0 +1,51 @@
+{
+  "outputSlides": [
+    { "outputSlide": 1, "sourceSlide": 1, "narrativeRole": "cover", "reuseMode": "duplicate-slide", "editTargets": [] },
+    { "outputSlide": 2, "sourceSlide": 2, "narrativeRole": "project overview", "reuseMode": "duplicate-slide", "editTargets": [] },
+    { "outputSlide": 3, "sourceSlide": 3, "narrativeRole": "architecture", "reuseMode": "duplicate-slide", "editTargets": [] },
+    { "outputSlide": 4, "sourceSlide": 4, "narrativeRole": "document ingestion", "reuseMode": "duplicate-slide", "editTargets": [] },
+    { "outputSlide": 5, "sourceSlide": 5, "narrativeRole": "RAG ingestion flow", "reuseMode": "duplicate-slide", "editTargets": [] },
+    { "outputSlide": 6, "sourceSlide": 6, "narrativeRole": "RAG retrieval flow", "reuseMode": "duplicate-slide", "editTargets": [] },
+    { "outputSlide": 7, "sourceSlide": 7, "narrativeRole": "answer generation", "reuseMode": "duplicate-slide", "editTargets": [] },
+    { "outputSlide": 8, "sourceSlide": 8, "narrativeRole": "desktop delivery", "reuseMode": "duplicate-slide", "editTargets": [] },
+    { "outputSlide": 9, "sourceSlide": 9, "narrativeRole": "testing and results", "reuseMode": "duplicate-slide", "editTargets": [] },
+    {
+      "outputSlide": 10,
+      "sourceSlide": 6,
+      "narrativeRole": "shared access logic",
+      "reuseMode": "duplicate-slide",
+      "editTargets": [
+        { "shapeIds": ["sh/lkrqp4ra", "sh/yhg7epsj", "sh/zi98nu94", "sh/98rqt4r6", "sh/ml07i9sv", "sh/oryp8fah", "sh/pc76hkr2", "sh/w32twb6l", "sh/v2tcn650", "sh/5svutgni", "sh/47mt0b6x", "sh/i54bylor"], "action": "rewrite" }
+      ]
+    },
+    {
+      "outputSlide": 11,
+      "sourceSlide": 5,
+      "narrativeRole": "sign-in implementation",
+      "reuseMode": "duplicate-slide",
+      "editTargets": [
+        { "shapeIds": ["sh/qd0bahob", "sh/dgbulwnm", "sh/cf2tcr61", "sh/w32dkbuh", "sh/x4vedgvm", "sh/k7mxovud", "sh/58vehgvy", "sh/sb6xsvu9", "sh/tcfel0vu", "sh/fe94nm1w", "sh/ud0ne10b", "sh/3i94r61s", "sh/2h0ni107", "sh/kny587i9", "sh/atcjidg7", "sh/vu5kbihc", "sh/wve1knyx", "sh/xwn2dszi", "sh/ihw3mxg3"], "action": "rewrite" }
+      ]
+    },
+    {
+      "outputSlide": 12,
+      "sourceSlide": 5,
+      "narrativeRole": "OJ implementation",
+      "reuseMode": "duplicate-slide",
+      "editTargets": [
+        { "shapeIds": ["sh/qd0bahob", "sh/dgbulwnm", "sh/cf2tcr61", "sh/w32dkbuh", "sh/x4vedgvm", "sh/k7mxovud", "sh/58vehgvy", "sh/sb6xsvu9", "sh/tcfel0vu", "sh/fe94nm1w", "sh/ud0ne10b", "sh/3i94r61s", "sh/2h0ni107", "sh/kny587i9", "sh/atcjidg7", "sh/vu5kbihc", "sh/wve1knyx", "sh/xwn2dszi", "sh/ihw3mxg3"], "action": "rewrite" }
+      ]
+    },
+    {
+      "outputSlide": 13,
+      "sourceSlide": 8,
+      "narrativeRole": "Deadline board implementation",
+      "reuseMode": "duplicate-slide",
+      "editTargets": [
+        { "shapeIds": ["sh/elkf2pg7", "sh/18byd4zy", "sh/g72x4zyd", "sh/tkby9kzm", "sh/sjix0zy1", "sh/id0fu50z", "sh/98rehwve", "sh/m5gvmhwn", "sh/0jydkreh", "sh/ehgvihwr", "sh/zipwbmdc", "sh/lgbepgvm", "sh/tw7e9gnq"], "action": "rewrite" }
+      ]
+    },
+    { "outputSlide": 14, "sourceSlide": 10, "narrativeRole": "preserve-only", "reuseMode": "duplicate-slide", "editTargets": [] }
+  ],
+  "omittedSourceSlides": []
+}

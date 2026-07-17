@@ -130,10 +130,11 @@
 
 <script setup>
 import { ref, reactive, onMounted, onActivated, nextTick } from 'vue'
-import { Setting, Plus, Delete, User, Check } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus, Delete, User } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { campusAccounts as savedAccounts, refreshCampusAccounts } from '../store/useCampusAccounts'
+import { apiEventSource, apiFetch } from '../api/client'
 
-const savedAccounts = ref([])
 const selectedAccount = ref(null) 
 const accountDialogVisible = ref(false)
 const isSavingAccount = ref(false)
@@ -175,15 +176,17 @@ const loadModelConfigs = () => {
 
 const fetchAccounts = async () => {
   try {
-    const res = await fetch('http://127.0.0.1:8000/api/campus/accounts')
-    if (res.ok) {
-      savedAccounts.value = await res.json()
-      if (savedAccounts.value.length > 0 && !selectedAccount.value) {
-        selectedAccount.value = savedAccounts.value[0]
-      }
+    const accounts = await refreshCampusAccounts()
+    if (selectedAccount.value) {
+      selectedAccount.value = accounts.find(
+        account => account.student_id === selectedAccount.value.student_id
+      ) || null
+    }
+    if (accounts.length > 0 && !selectedAccount.value) {
+      selectedAccount.value = accounts[0]
     }
   } catch (e) {
-    console.error("同步身份数据失败")
+    console.error('同步身份数据失败', e)
   }
 }
 
@@ -206,7 +209,7 @@ const submitAccount = async () => {
   if (!accountForm.student_id || !accountForm.password) return ElMessage.warning('密码或账号不能为空！')
   isSavingAccount.value = true
   try {
-    const res = await fetch('http://127.0.0.1:8000/api/campus/account', {
+    const res = await apiFetch('/api/campus/account', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(accountForm)
@@ -215,11 +218,11 @@ const submitAccount = async () => {
     if (res.ok) {
       ElMessage.success(data.message)
       accountDialogVisible.value = false
-      fetchAccounts() 
+      await fetchAccounts()
     } else {
       ElMessage.error(data.detail)
     }
-  } catch (err) {
+  } catch {
     ElMessage.error('网络通讯失败')
   } finally {
     isSavingAccount.value = false
@@ -228,13 +231,13 @@ const submitAccount = async () => {
 
 const deleteAccount = async (studentId) => {
   try {
-    const res = await fetch(`http://127.0.0.1:8000/api/campus/account/${studentId}`, { method: 'DELETE' })
+    const res = await apiFetch(`/api/campus/account/${encodeURIComponent(studentId)}`, { method: 'DELETE' })
     if (res.ok) {
       ElMessage.success('全局账号已成功删除')
       if (selectedAccount.value?.student_id === studentId) selectedAccount.value = null
-      fetchAccounts()
+      await fetchAccounts()
     }
-  } catch (err) {
+  } catch {
     ElMessage.error('删除失败')
   }
 }
@@ -267,7 +270,7 @@ const startEngine = () => {
     api_key: currentModel.apiKey || '',
     interval: String(solveInterval.value)
   })
-  eventSource = new EventSource(`http://127.0.0.1:8000/api/oj/stream_solve?${params.toString()}`)
+  eventSource = apiEventSource(`/api/oj/stream_solve?${params.toString()}`)
 
   eventSource.onmessage = (event) => {
     logs.value.push(event.data)

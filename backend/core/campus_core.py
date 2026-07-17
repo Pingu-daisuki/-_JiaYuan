@@ -4,6 +4,7 @@ import time
 import uuid
 import asyncio
 import requests # <--- 新增
+import re
 from datetime import datetime
 from xmulogin import xmulogin
 
@@ -15,6 +16,151 @@ HEADERS = {
     "Referer": "https://ids.xmu.edu.cn/authserver/login",
 }
 
+ANSWER_COUNT_KEYS = {
+    "answered_count", "answer_count", "attendee_count", "attend_count",
+    "present_count", "signed_count", "signed_in_count",
+    "answered_num", "attend_num", "present_num",
+    "answeredCount", "answerCount", "attendeeCount", "attendCount",
+    "presentCount", "signedCount", "signedInCount",
+    "answeredNum", "attendNum", "presentNum",
+}
+ANSWER_LIST_KEYS = {
+    "answered_students", "answered_users", "attendees",
+    "present_students", "signed_students", "signed_users",
+    "answeredStudents", "answeredUsers", "presentStudents", "signedStudents", "signedUsers",
+}
+STUDENT_RECORD_LIST_KEYS = {"student_rollcalls", "studentRollcalls", "rollcall_students"}
+ANSWERED_STATUSES = {
+    "answered", "answer", "present", "attended", "attend", "signed", "success",
+    "completed", "complete", "submitted", "normal", "yes", "1",
+}
+UNANSWERED_STATUSES = {
+    "absent", "unanswered", "not_answered", "pending", "waiting", "no", "0",
+}
+
+
+def _nonnegative_int(value):
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)) and value >= 0:
+        return int(value)
+    if isinstance(value, str):
+        normalized = value.strip()
+        if normalized.isdigit():
+            return int(normalized)
+    return None
+
+
+def _count_answered_student_records(records):
+    if not isinstance(records, list):
+        return None
+    answered = 0
+    saw_attendance_evidence = False
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        for key in ("is_answered", "answered", "is_present", "present", "signed", "submitted"):
+            if key in record and isinstance(record[key], bool):
+                saw_attendance_evidence = True
+                answered += int(record[key])
+                break
+        else:
+            status = record.get("status") or record.get("attendance_status") or record.get("answer_status")
+            if status is not None:
+                normalized_status = str(status).strip().lower()
+                if normalized_status in ANSWERED_STATUSES:
+                    saw_attendance_evidence = True
+                    answered += 1
+                elif normalized_status in UNANSWERED_STATUSES:
+                    saw_attendance_evidence = True
+            elif any(record.get(key) for key in ("answered_at", "submitted_at", "attendance_time")):
+                saw_attendance_evidence = True
+                answered += 1
+    return answered if saw_attendance_evidence else None
+
+
+def extract_answered_count(payload):
+    """兼容畅课不同版本的标量、嵌套对象和学生签到列表。"""
+    candidates = []
+    visited = set()
+
+    def visit(value, path=()):
+        if isinstance(value, (dict, list)):
+            identity = id(value)
+            if identity in visited:
+                return
+            visited.add(identity)
+
+        if isinstance(value, dict):
+            for key in ANSWER_COUNT_KEYS:
+                if key in value:
+                    count = _nonnegative_int(value[key])
+                    if count is not None:
+                        candidates.append(count)
+            for key in ANSWER_LIST_KEYS:
+                records = value.get(key)
+                if isinstance(records, list):
+                    candidates.append(len(records))
+            for key in STUDENT_RECORD_LIST_KEYS:
+                count = _count_answered_student_records(value.get(key))
+                if count is not None:
+                    candidates.append(count)
+            for key, nested in value.items():
+                normalized_key = re.sub(r"[^a-z0-9]+", "_", str(key)).strip("_").lower()
+                normalized_path = path + (normalized_key,)
+                path_label = "_".join(normalized_path)
+                if (
+                    any(token in path_label for token in ("answer", "attend", "present", "sign"))
+                    and any(token in normalized_key for token in ("count", "num", "total"))
+                ):
+                    count = _nonnegative_int(nested)
+                    if count is not None:
+                        candidates.append(count)
+                if (
+                    isinstance(nested, list)
+                    and any(token in normalized_key for token in ("answer", "attendee", "present", "signed"))
+                    and any(token in normalized_key for token in ("student", "user", "member", "list"))
+                ):
+                    candidates.append(len(nested))
+                visit(nested, normalized_path)
+        elif isinstance(value, list):
+            count = _count_answered_student_records(value)
+            if count is not None:
+                candidates.append(count)
+            for nested in value:
+                visit(nested, path)
+
+    visit(payload)
+    return max(candidates) if candidates else None
+
+
+def _find_rollcall_id(payload):
+    if not isinstance(payload, dict):
+        return None
+    for key in ("rollcall_id", "rollcallId"):
+        if payload.get(key) is not None:
+            return payload[key]
+    nested_rollcall = payload.get("rollcall")
+    if isinstance(nested_rollcall, dict):
+        return nested_rollcall.get("id") or nested_rollcall.get("rollcall_id")
+    return payload.get("id")
+
+
+def extract_rollcalls(payload):
+    """兼容 rollcalls 位于顶层或 data/result 等包装对象中的响应。"""
+    if isinstance(payload, list):
+        return payload
+    if not isinstance(payload, dict):
+        return []
+    for key in ("rollcalls", "radar_rollcalls", "radarRollcalls"):
+        if isinstance(payload.get(key), list):
+            return payload[key]
+    for value in payload.values():
+        nested = extract_rollcalls(value)
+        if nested:
+            return nested
+    return []
+
 class XmuNativeBot:
     def __init__(self, student_id, password, mode="default", check_interval=5, answer_threshold=0, time_slots=None):
         self.student_id = student_id
@@ -23,8 +169,8 @@ class XmuNativeBot:
         
         # --- 策略配置 ---
         self.mode = mode                     # "default" 或 "custom"
-        self.check_interval = check_interval # 轮询间隔(秒)
-        self.answer_threshold = answer_threshold # 已签到多少人再签到
+        self.check_interval = max(1, int(check_interval or 5)) # 轮询间隔(秒)
+        self.answer_threshold = max(0, int(answer_threshold or 0)) # 已签到多少人再签到
         self.time_slots = time_slots or []   # 格式: [{"start": "08:00", "end": "11:50"}]
 
     async def login(self):
@@ -34,6 +180,19 @@ class XmuNativeBot:
             raise Exception("统一身份认证失败，请检查账号密码。")
         self.session.headers.update(HEADERS)
         return True
+
+    def get_answered_count(self, rollcall):
+        """优先读取雷达列表；列表未携带人数时再查询签到详情。"""
+        count = extract_answered_count(rollcall)
+        if count is not None:
+            return count
+        rollcall_id = _find_rollcall_id(rollcall)
+        if rollcall_id is None or self.session is None:
+            return None
+        detail_url = f"{BASE_URL}/api/rollcall/{rollcall_id}/student_rollcalls"
+        response = self.session.get(detail_url, timeout=10)
+        response.raise_for_status()
+        return extract_answered_count(response.json())
 
     def is_active_time(self):
         """根据当前模式和时间段判断是否处于监控激活期"""

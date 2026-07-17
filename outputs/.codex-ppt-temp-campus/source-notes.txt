@@ -1,0 +1,6 @@
+Implementation evidence used for the appended slides:
+- backend/routes/campus.py: local campus_config account storage, account validation, SSE sign stream, strategy loading, rollcall polling and action branches.
+- backend/core/campus_core.py: xmulogin(type=3), authenticated requests.Session, /api/radar/rollcalls, numeric sign and radar-coordinate solving.
+- backend/core/oj_core.py and backend/routes/oj.py: independent requests.Session, CSRF bootstrap, /api/login, contest/problem/submission APIs, LLM code generation, judging poll, and SSE logs.
+- backend/routes/deadlines.py and frontend DeadlineBoard.vue: cache-first reads, sync=true refresh, /api/todos parsing, SQLite replacement, and urgency timeline classification.
+Accuracy boundary: the three features share a local account entry, but 畅课 and XMUOJ do not share the same web session. XMUOJ currently uses a fixed password 123456 and disables TLS certificate verification; this is called out explicitly as a current implementation boundary.

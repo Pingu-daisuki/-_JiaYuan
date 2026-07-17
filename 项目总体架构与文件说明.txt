@@ -1,0 +1,494 @@
+JiaYuan 项目总体架构、搭建思路、技术栈与文件说明
+====================================================
+
+文档说明
+--------
+本文按当前工作区代码编写，描述的是实际实现，不是理想化设计稿。
+“每个文件”以项目自有源码、配置、脚本和交付物为范围。node_modules、Python 私有运行时、
+Tesseract 安装目录等第三方内容包含数万文件，本文按目录和关键文件类型整体说明，不逐个解释第三方源码。
+
+
+一、项目定位
+------------
+JiaYuan 是一个 Windows 本地优先的校园工具与课程知识库应用，主要包含五组能力：
+
+1. 课程资料 RAG：导入 PDF、DOCX、PPTX、Markdown、HTML 或网页，切片后写入 Chroma，
+   按课程/文件范围检索，并把页码、幻灯片或章节作为引用返回。
+2. 文档解析：默认使用 PyMuPDF；扫描 PDF 使用 Tesseract OCR 兜底；复杂版面可选 Marker/MinerU。
+3. 资料库管理：课程树、文件移动/删除、入库状态、模糊搜索、失败重建和来源预览。
+4. 校园工具：统一身份认证、签到策略、课程作业/考试截止时间同步。
+5. OJ 工具：读取实验题目，调用大模型生成代码，提交并轮询评测结果。
+
+应用既可以采用“Vue 开发服务器 + FastAPI”方式开发，也可以通过 Electron 打包为一个 Windows
+一键安装程序。桌面版把 Python、后端依赖、Tesseract 和基础向量模型一并携带，不要求用户预装开发环境。
+
+
+二、总体分层架构
+----------------
+
+  [Vue 3 + Element Plus 前端]
+              |
+              | HTTP / 流式 fetch
+              v
+  [FastAPI 路由层 backend/routes]
+              |
+              v
+  [业务核心层 backend/core]
+      |          |             |
+      |          |             +-- 校园认证 / OJ / 外部大模型
+      |          +-- PyMuPDF / Tesseract / Marker / MinerU
+      +-- 文档校验、切片、混合检索、状态补偿
+              |
+              v
+  [SQLite + Chroma + uploads + models]
+
+  Windows 桌面模式：
+  [NSIS 安装器] -> [Electron 主进程] -> 解压私有 Python/模型 -> 启动 FastAPI:8765
+                                      -> 加载 Vue 静态页面
+                                      -> 把页面中的 8000 请求重定向到 8765
+
+
+三、核心业务流程
+----------------
+
+1. 文档入库流程
+
+   前端拖拽/选择文件
+      -> POST /api/rag/upload
+      -> 扩展名、MIME、文件签名、大小和 Office ZIP 安全校验
+      -> 计算 SHA-256，检查是否已有 ready 记录可以复用
+      -> 创建 knowledge_files 记录，状态 uploaded
+      -> parsing：按格式/引擎提取结构化文本
+      -> indexing：按章节和重叠窗口切片
+      -> 写入 Chroma，并保存 file_id、course_id、页码、章节、chunk_index、engine 等元数据
+      -> ready：记录页数/单元数、耗时和 chunk 数
+      -> 任何阶段失败：状态设为 failed，并按 file_id 补偿删除向量
+
+2. RAG 问答流程
+
+   用户问题
+      -> POST /api/rag/retrieve，携带 course_id 和可选 file_ids
+      -> Chroma 向量 Top 10
+      -> BM25 关键词分数 + 查询覆盖率
+      -> MMR 去重
+      -> 可选 CrossEncoder reranker
+      -> 最低相关度门槛
+      -> 最终 Top 3 上下文与 sources
+      -> 若无充分依据，直接返回“资料库没有足够依据”
+      -> 若有依据，再 POST /api/chat/ 调用 OpenAI 兼容接口流式生成答案
+      -> 前端展示答案及可点击引用
+
+3. Marker/MinerU 初始化流程
+
+   设置页选择引擎与 CPU/GPU
+      -> GET /api/engine/init/{engine}?use_gpu=...
+      -> 检查 CLI/模块
+      -> 在当前私有 Python 中 pip 安装 marker-pdf[full] 或 mineru[pipeline]
+      -> GPU 模式先验证 CUDA kernel，必要时安装匹配的 PyTorch CUDA wheel
+      -> MinerU 检查并下载完整模型目录；Marker 首次探针时下载 Hugging Face 模型
+      -> 生成最小 PDF 并执行真实解析探针
+      -> 仅探针成功后写入带版本、设备和模型目录的初始化标记
+      -> 全过程以流式日志和心跳反馈给前端，并有超时和子进程回收
+
+4. 桌面启动流程
+
+   用户双击 JiaYuan
+      -> Electron 单实例锁
+      -> 显示 splash.html
+      -> 比较 runtime-manifest.json
+      -> 首次启动解压 python-runtime.tar 和 models-runtime.tar
+      -> 以 JIAYUAN_DATA_DIR/JIAYUAN_MODEL_DIR 指向 LocalAppData
+      -> 隐藏启动 backend/main.py，监听 127.0.0.1:8765
+      -> 轮询 /api/health
+      -> 后端就绪后加载 frontend/index.html
+      -> 退出 Electron 时终止其创建的后端进程树
+
+
+四、搭建思路
+------------
+
+1. 本地优先
+   文档、向量和账号配置保存在用户本机，RAG 检索无需把原始资料上传到远端。只有最终大模型问答、
+   网页导入或校园/OJ 接口需要网络。
+
+2. API 与界面分离
+   Vue 只负责交互和展示，FastAPI 负责文档安全、数据库、模型调用和长任务。两者通过清晰的
+   /api 路由通信，便于将来替换 UI 或单独测试后端。
+
+3. 长任务全部可观察
+   文档解析、引擎安装、签到和 OJ 托管均可能耗时，因此后端使用 StreamingResponse，前端用
+   ReadableStream 逐块读取日志，避免“HTTP 200 但内部早已失败”却仍提示成功。
+
+4. 可恢复入库
+   数据库状态机负责记录每一步；应用启动时会恢复异常中断记录；向量写入采用 file_id 幂等删除再写入，
+   失败时补偿删除，从而避免数据库和 Chroma 不一致。
+
+5. 通用文档协议
+   不同解析器最终统一输出 text、section、location_type、location_index 等字段，使 PDF 页、PPT 幻灯片、
+   Word/Markdown 标题和网页章节都能进入同一切片与引用流程。
+
+6. 按需引擎
+   普通文档走轻量原生解析。Marker/MinerU 体积大、依赖显卡环境，因此不写死在基础 requirements，
+   而是在用户选择后由后端安装、下载、验证，并把模型放到独立用户目录。
+
+7. 可复制桌面运行时
+   Electron 不依赖系统 Python。构建脚本下载官方嵌入式 Python，安装后端 requirements，加入基础 BGE，
+   验证离线导入后打成 tar，由 NSIS 与应用一起发布。
+
+
+五、技术栈
+----------
+
+前端：
+- Vue 3，Composition API，<script setup>。
+- Vite 8：开发服务器和生产构建。
+- Element Plus：布局、菜单、表单、弹窗、树、时间线、消息提示和图标。
+- Fetch API / Axios：普通请求及流式响应读取。
+- markdown-it：答案 Markdown 渲染。
+- highlight.js：代码高亮。
+- KaTeX + markdown-it-texmath：数学公式渲染。
+- localStorage：模型配置、解析引擎和资料树缓存。
+- ESLint、Oxlint、Prettier：静态检查和格式化。
+
+后端：
+- Python 3.13 桌面运行时；源码兼容常规 Python 3.10+ 开发环境。
+- FastAPI + Uvicorn + Pydantic + python-multipart。
+- SQLite：课程、文件状态、账号和截止时间。
+- ChromaDB：持久化向量库及元数据过滤。
+- sentence-transformers：BGE embedding 与可选 CrossEncoder reranker。
+- PyMuPDF(fitz)：PDF 文本/页数/图像渲染。
+- Tesseract：扫描页 OCR 兜底。
+- python-docx、python-pptx、BeautifulSoup4：DOCX、PPTX、HTML 解析。
+- Marker、MinerU：可选复杂版面视觉解析。
+- httpx、requests、urllib3：网页抓取和校园/OJ HTTP 通信。
+- OpenAI Python SDK：调用 OpenAI 兼容大模型接口。
+- xmulogin：厦大统一身份认证。
+
+桌面与构建：
+- Electron：Windows 桌面壳、后端进程管理、路径隔离和外链控制。
+- electron-builder + NSIS：x64 一键安装、桌面/开始菜单快捷方式。
+- PowerShell：构建私有 Python 运行时与模型归档。
+- npm package-lock：固定前端和桌面 Node 依赖版本。
+
+
+六、API 模块划分
+----------------
+
+- GET  /api/health：桌面启动探活。
+- POST /api/chat/：携带 RAG context 调用大模型并流式返回答案。
+- POST /api/rag/upload：上传并入库文档。
+- POST /api/rag/import-url：安全抓取网页并入库。
+- POST /api/rag/files/{file_id}/reindex：失败或已有文件重新索引。
+- GET  /api/rag/files/{file_id}/status：查询入库状态和指标。
+- POST /api/rag/retrieve：按课程/文件范围混合检索。
+- GET  /api/engine/status/{engine}：Marker/MinerU 初始化状态。
+- GET  /api/engine/init/{engine}：流式执行引擎初始化。
+- /api/library/...：课程树、模糊搜索、文件移动/删除、内容下载和文本预览。
+- /api/campus/...：校园账号、策略和签到流。
+- GET /api/deadlines/{student_id}：读取缓存或同步截止时间。
+- GET /api/oj/stream_solve：OJ 登录、生成、提交、轮询的 SSE 流程。
+
+
+七、逐文件与目录说明
+--------------------
+
+（一）项目根目录
+
+.gitignore
+  忽略编译产物、数据库、账号配置、上传文件、Chroma、引擎标记、模型、备份、Node 缓存、桌面运行时
+  和 release，防止个人数据或数 GB 二进制进入 Git。
+
+README.md
+  面向使用者和开发者的总说明，包含功能、Windows 安装、引擎初始化、开发/构建方法、安全边界和排障。
+
+install_backend.bat
+  开发环境后端依赖安装脚本：升级 pip，并按 backend/requirements.txt 安装。
+
+start.bat
+  开发环境启动脚本：分别打开后端和 Vite 前端窗口；后端启用 JIAYUAN_RELOAD。
+
+项目总体架构与文件说明.txt
+  当前文档。
+
+Python技术点与项目应用.txt
+  汇总 Python 语法、标准库、框架、RAG、并发、文档解析及安全技术点，并标明代码位置。
+
+Vue技术点与项目应用.txt
+  汇总 Vue 3、Composition API、模板指令、组件生命周期、状态、流式请求和 UI 技术点。
+
+.git/
+  Git 版本历史和索引，不属于运行时。历史中可能仍保留已删除文件，发布源码快照时应注意隐私。
+
+.agents/
+  本地开发代理的元数据目录；当前不参与应用运行。
+
+.backups/
+  初始化前的完整敏感备份。被根 .gitignore 排除，不打入桌面安装包。
+
+release/JiaYuan-Setup-x64.exe
+  最终 Windows x64 一键安装程序，内含 Electron、后端、Tesseract、私有 Python 和基础向量模型。
+
+
+（二）backend：FastAPI 后端
+
+backend/main.py
+  后端入口。建立 FastAPI、CORS、健康检查，挂载所有路由；启动时恢复中断入库并补齐旧文件指标；
+  从 JIAYUAN_PORT 读取端口，开发模式可热重载。
+
+backend/requirements.txt
+  基础后端依赖清单。Marker/MinerU 不在这里固定安装，而由设置页按需初始化。
+
+backend/core/__init__.py
+  把 core 标记为 Python 包，便于 routes 使用 core.xxx 导入。
+
+backend/core/paths.py
+  统一资源路径和可写数据路径。开发模式默认写 backend；桌面模式通过环境变量写 LocalAppData。
+  定义数据库、uploads、vector_db、engine_flags、engine_config、models 和 MinerU 配置位置。
+
+backend/core/db.py
+  SQLite 建表、迁移和连接管理。创建 courses、knowledge_files、deadlines；维护文档状态机、SHA-256、
+  指标字段和索引；提供账号与 deadline 的基础读写方法。
+
+backend/core/document_parser.py
+  通用文档安全校验和轻量解析器。识别扩展名/MIME/文件签名；防 Office ZIP 炸弹和路径穿越；
+  解析 DOCX 段落/表格、PPTX 幻灯片、Markdown 标题和 HTML 正文；生成统一 segment 与预览文本。
+
+backend/core/processor.py
+  RAG 核心。负责 PyMuPDF 提取、Tesseract OCR、Marker/MinerU 调用、分节切片、Chroma 写入、
+  入库状态和失败补偿；负责课程/文件 where 过滤、向量候选、BM25、MMR、reranker、阈值、来源组装。
+
+backend/core/engine_init.py
+  Marker/MinerU 安装与验证中心。寻找 CLI、构造命令、管理 pip/模型下载、检查 CUDA 架构、升级 GPU
+  PyTorch、执行最小 PDF 探针、流式心跳、超时终止、完整性判断和初始化标记。
+
+backend/core/campus_core.py
+  XmuNativeBot 业务类。通过 xmulogin 建立会话，判断策略时间段，抓取 deadline，发送数字码/雷达签到；
+  包含坐标和双点距离求解的数学处理。
+
+backend/core/campus_task.py
+  一个异步启动本机 xmu CLI 的辅助模块，使用 asyncio 子进程并按 GBK 解码控制台。目前没有被主路由引用，
+  且包含开发机绝对路径，属于遗留实现；正式校园流程使用 campus_core.py。
+
+backend/core/oj_core.py
+  OJ 核心客户端和模型网关。构造解题提示词；支持 Gemini 风格与 OpenAI 兼容调用；实现 OJ 登录、
+  进入实验、读取题目、提交代码、解析限频提示和轮询评测结果。
+
+backend/routes/__init__.py
+  把 routes 标记为 Python 包。
+
+backend/routes/chat.py
+  大模型聊天路由。Pydantic 校验模型配置和请求；没有合格 RAG context 时拒绝自由猜测；有依据时通过
+  OpenAI SDK stream=True 调用模型，并把增量文本作为 StreamingResponse 返回。
+
+backend/routes/rag.py
+  文档入口和检索 API。处理上传暂存、URL 导入、SHA 去重复用、数据库登记、重新索引、状态查询和范围检索；
+  网页导入包含 DNS/IP/重定向/类型/大小检查以降低 SSRF 风险。
+
+backend/routes/library.py
+  资料库 API。管理树形课程、文件列表、移动/删除和向量元数据同步；提供中文友好的模糊搜索、
+  文件安全下载和 Markdown/HTML 文本预览。
+
+backend/routes/engine.py
+  Marker/MinerU 状态及初始化的薄路由，把 engine_init.py 的生成器封装为流式 HTTP 响应。
+
+backend/routes/campus.py
+  校园账号与签到路由。创建 campus_config 表，管理账号和策略，通过流式日志运行 XmuNativeBot。
+  当前账号密码保存在本机 SQLite，未做额外应用层加密。
+
+backend/routes/deadlines.py
+  截止时间 API。默认读 SQLite 缓存；sync=true 时读取账号、统一认证、在线抓取并刷新 deadlines 表。
+
+backend/routes/oj.py
+  OJ 托管路由。读取账号与模型配置，用 asyncio.to_thread 包装同步 HTTP 调用，通过 SSE 顺序反馈登录、
+  题目、生成、提交、评测、冷却和错误日志。
+
+backend/source/tesseract/
+  随项目携带的 Windows Tesseract 运行目录（约 117 个文件）。tesseract.exe 是 OCR 主程序；相关 DLL 是
+  运行库；tessdata/chi_sim.traineddata 是简体中文识别数据；configs/、tessconfigs/ 和训练工具属于
+  Tesseract 发行内容。processor.py 通过 resource_path 定位此目录。
+
+backend/campus_assistant.db、uploads/、vector_db/、engine_flags/、engine_config/、models/
+  均为运行时生成目录/文件，不应提交。当前初始化状态下可以不存在；应用启动后按需创建。
+
+backend/__pycache__/、backend/core/__pycache__/、backend/routes/__pycache__/ 及其中 *.pyc
+  Python 导入模块时自动生成的字节码缓存，不是源码；不同 Python 版本会生成不同文件名。它们已被
+  .gitignore 忽略，可以安全删除，之后运行后端还会自动重建。
+
+
+（三）frontend：Vue 前端
+
+frontend/package.json
+  前端脚本、依赖和 Node 版本要求。定义 dev/build/preview/lint/format。
+
+frontend/package-lock.json
+  npm 锁文件，记录完整依赖树和精确版本，保证可复现安装。
+
+frontend/vite.config.js
+  Vite 配置。生产 base='./' 以支持 Electron file://；启用 Vue 插件；仅开发模式加载 Vue DevTools；
+  定义 @ 指向 src。
+
+frontend/index.html
+  Vite HTML 入口，提供 #app 挂载节点、favicon、viewport 和 main.js 模块入口。
+
+frontend/src/main.js
+  Vue 启动入口。导入全局 CSS，createApp(App)，安装 Element Plus，全局注册 Element Plus 图标并挂载。
+
+frontend/src/App.vue
+  应用外壳和左侧导航。用 activeMenu 在 Chat、Library、Campus、Deadlines、OJ、Settings 间切换；
+  使用 KeepAlive 保留页面组件状态。
+
+frontend/src/components/ChatView.vue
+  RAG 主界面。实现消息列表、Markdown/公式/代码渲染、检索范围、文件拖拽、多文件队列、URL 导入、
+  流式上传日志、流式答案、引用来源、PDF 页跳转与 Markdown/HTML 预览。
+
+frontend/src/components/LibraryPanel.vue
+  资料库界面。显示课程树和路径面包屑；管理新建、重命名、删除、移动；250ms 防抖模糊搜索；
+  显示入库状态/指标，打开文件或文本预览。
+
+frontend/src/components/SettingsView.vue
+  设置界面。维护 PyMuPDF/Marker/MinerU 选择、CPU/GPU 初始化弹窗和流日志；管理多个大模型配置；
+  将解析引擎、激活模型、base URL、API Key 等写入 localStorage。
+
+frontend/src/components/CampusView.vue
+  校园签到界面。维护账号和策略表单，启动/停止流式签到任务，彩色展示终端日志。
+
+frontend/src/components/DeadlineBoard.vue
+  截止时间看板。选择账号，读取缓存或触发同步，用 Element Plus Timeline 展示任务并计算紧急状态。
+
+frontend/src/components/OjView.vue
+  OJ 托管界面。选择账号、大模型、实验和语言参数，读取 SSE 流并展示生成/提交/评测日志；
+  onActivated 时刷新模型配置。
+
+frontend/src/store/useProfile.js
+  导出模块级 globalProfile ref，预留全局用户名/密码状态。当前没有其他组件导入，属于未启用的状态草稿。
+
+frontend/src/assets/base.css
+  Vue 脚手架提供的基础色彩、字体和全局 CSS 变量。
+
+frontend/src/assets/main.css
+  前端主全局样式入口，通常引用 base.css 并设置页面基础布局。
+
+frontend/src/assets/logo.svg
+  Vue 脚手架 Logo 资源；当前 App 主界面未直接使用。
+
+frontend/public/favicon.ico
+  浏览器页签图标，构建时复制到 dist 根目录。
+
+frontend/src/components/HelloWorld.vue
+  Vue 脚手架示例组件，当前未被 App.vue 引用。
+
+frontend/src/components/TheWelcome.vue
+  Vue 脚手架欢迎页，组合 WelcomeItem 和五个 SVG 图标，当前未被 App.vue 引用。
+
+frontend/src/components/WelcomeItem.vue
+  TheWelcome 的布局子组件，仅由未启用的 TheWelcome 使用。
+
+frontend/src/components/icons/IconCommunity.vue
+frontend/src/components/icons/IconDocumentation.vue
+frontend/src/components/icons/IconEcosystem.vue
+frontend/src/components/icons/IconSupport.vue
+frontend/src/components/icons/IconTooling.vue
+  Vue 脚手架内联 SVG 图标，仅供未启用的 TheWelcome.vue 使用。
+
+frontend/.editorconfig
+  编辑器统一规则：UTF-8、2 空格、LF、清理尾随空格、100 字符行宽。
+
+frontend/.gitattributes
+  让 Git 把文本文件规范化为 LF。
+
+frontend/.gitignore
+  忽略前端日志、node_modules、dist、coverage、编辑器缓存和测试产物。
+
+frontend/.oxlintrc.json
+  Oxlint 配置，启用 JS/Vue 等插件和 correctness 错误级规则。
+
+frontend/.prettierrc.json
+  Prettier 风格：无分号、单引号、100 字符宽。
+
+frontend/eslint.config.js
+  ESLint flat config，组合 JS 推荐规则、Vue essential、Oxlint 转接和 Prettier 冲突规避。
+
+frontend/jsconfig.json
+  JavaScript 编辑器/语言服务配置，定义 @/* -> src/*，排除 node_modules 和 dist。
+
+frontend/.vscode/extensions.json
+  推荐 VS Code 扩展。
+
+frontend/.vscode/settings.json
+  项目级 VS Code 设置。
+
+frontend/README.md
+  Vue/Vite 脚手架原始开发说明；项目真实使用说明以根 README.md 为准。
+
+frontend/node_modules/
+  npm 安装的第三方前端依赖，不属于自有源码，不应提交。
+
+frontend/dist/
+  npm run build 生成的静态前端，Electron 打包时读取；可以删除并重新构建。
+
+
+（四）desktop：Windows 桌面封装
+
+desktop/main.cjs
+  Electron 主进程。创建安全 BrowserWindow；限制导航和外链；管理单实例；显示启动页；解压私有 Python
+  与基础模型；启动/探活/关闭 FastAPI；设置 LocalAppData 数据路径；记录 electron/backend 日志；
+  把前端固定的 8000 API 请求重定向到桌面后端 8765。
+
+desktop/splash.html
+  后端和模型加载期间的启动页，main.cjs 动态更新状态文字。
+
+desktop/package.json
+  Electron/electron-builder 配置。声明 appId、产品名、asar、extraResources、NSIS x64 一键安装、
+  当前用户范围、桌面/开始菜单快捷方式、安装后启动和输出文件名。
+
+desktop/package-lock.json
+  固定 Electron 和 electron-builder 的完整 Node 依赖树。
+
+desktop/scripts/build-python-runtime.ps1
+  构建桌面私有运行时：下载嵌入式 Python 与 get-pip，安装后端 requirements，下载 BGE 模型，
+  做离线导入检查，写 manifest，并分别生成 Python/模型 tar。
+
+desktop/runtime/runtime-manifest.json
+  私有运行时版本、Python 版本、架构和生成时间。Electron 用 runtimeVersion 判断是否需要重新解压。
+
+desktop/runtime/python-runtime.tar
+  构建产物：Python 3.13.14、pip 和基础后端包的归档；被 .gitignore 排除，但打入安装器。
+
+desktop/runtime/models-runtime.tar
+  构建产物：BAAI/bge-small-zh-v1.5 基础向量模型归档；不包含 Marker/MinerU 模型。
+
+desktop/node_modules/
+  Electron 构建依赖，不提交 Git。
+
+
+八、运行时数据位置
+------------------
+
+开发模式默认位于 backend：
+- backend/campus_assistant.db
+- backend/uploads/
+- backend/vector_db/
+- backend/engine_flags/
+- backend/engine_config/
+- backend/models/
+
+桌面模式默认位于 %LOCALAPPDATA%\JiaYuan：
+- data/：SQLite、上传、Chroma、引擎配置与状态。
+- models/：BGE、Marker、MinerU 缓存。
+- runtime/：展开后的私有 Python。
+- logs/：Electron 和后端日志。
+- profile/：Electron localStorage、缓存等页面数据。
+
+
+九、当前实现中值得注意的边界
+----------------------------
+
+1. campus_task.py 含开发机绝对路径且当前未被调用；如重新启用应改成 PATH/配置驱动。
+2. campus_config 中的账号密码和 SettingsView localStorage 中的 API Key 是本机明文数据，适合个人本地工具，
+   不适合共享 Windows 账号或多人服务器部署。
+3. frontend 的 API 地址仍写为 127.0.0.1:8000；Electron 通过 webRequest 重定向到 8765。长期可改成统一
+   API_BASE 配置，减少桌面适配层。
+4. HelloWorld/TheWelcome/WelcomeItem/icons 和 useProfile.js 是未使用脚手架/草稿，可在后续整理中删除。
+5. OJ 模块关闭了部分 HTTPS 证书警告，部署到不可信网络前应恢复严格证书验证。
+6. 安装程序当前未配置商业代码签名和自定义 Windows 图标。
+7. 当前仓库没有系统化 pytest/Vitest 测试目录，主要依靠构建、语法检查和桌面启动烟雾测试。

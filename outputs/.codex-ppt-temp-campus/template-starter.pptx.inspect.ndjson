@@ -1,0 +1,337 @@
+{"kind":"deck","id":"pr/svrli8","name":"Deck"}
+{"kind":"layout","layoutId":"/ppt/slideMasters/slideMaster1.xml","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"/ppt/slideLayouts/slideLayout1.xml","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/joiwgn","slide":1,"title":"小学期课程项目汇报","textShapes":6}
+{"kind":"textbox","id":"sh/gnq1cvmp","slide":1,"name":"title-kicker","text":"小学期课程项目汇报","textPreview":"小学期课程项目汇报","textChars":9,"textLines":1,"bbox":[52,42,520,34]}
+{"kind":"shape","id":"sh/fmhk3ql4","slide":1,"name":"title-accent","bbox":[52,130,12,310]}
+{"kind":"textbox","id":"sh/ulojal4z","slide":1,"name":"title-main","text":"厦大 JiaYuan","textPreview":"厦大 JiaYuan","textChars":10,"textLines":1,"bbox":[92,138,900,86]}
+{"kind":"textbox","id":"sh/psz2903m","slide":1,"name":"title-message","text":"把课程资料变成可检索、\n可追溯的本地知识库","textPreview":"把课程资料变成可检索、 | 可追溯的本地知识库","textChars":21,"textLines":2,"bbox":[92,244,980,210]}
+{"kind":"textbox","id":"sh/4rq1gvm1","slide":1,"name":"title-sub","text":"Vue 3 · FastAPI · RAG · Electron","textPreview":"Vue 3 · FastAPI · RAG · Electron","textChars":32,"textLines":1,"bbox":[92,514,700,40]}
+{"kind":"textbox","id":"sh/3qhk7qlg","slide":1,"name":"title-meta","text":"汇报人：__________    2026.07","textPreview":"汇报人：__________    2026.07","textChars":25,"textLines":1,"bbox":[92,582,700,34]}
+{"kind":"textbox","id":"sh/2p8jel4v","slide":1,"name":"title-mark","text":"JIAYUAN","textPreview":"JIAYUAN","textChars":7,"textLines":1,"bbox":[1050,630,178,26]}
+{"kind":"notes","id":"nt/joiwgn","slide":1,"text":""}
+{"kind":"slide","id":"sl/jx0b09","slide":2,"title":"01 · 项目定位","textShapes":13}
+{"kind":"textbox","id":"sh/n210vq98","slide":2,"name":"kicker-2","text":"01 · 项目定位","textPreview":"01 · 项目定位","textChars":9,"textLines":1,"bbox":[52,30,500,26]}
+{"kind":"textbox","id":"sh/o3a14vqt","slide":2,"name":"title-2","text":"这个项目解决的是：资料很多，但很难快速找到可信答案","textPreview":"这个项目解决的是：资料很多，但很难快速找到可信答案","textChars":25,"textLines":1,"bbox":[52,62,1160,74]}
+{"kind":"textbox","id":"sh/p4jixgre","slide":2,"name":"footer-2","text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[1180,672,48,20]}
+{"kind":"textbox","id":"sh/apcj6l8z","slide":2,"name":"problem-big-0","text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[52,196,330,86]}
+{"kind":"textbox","id":"sh/bql0zq9k","slide":2,"name":"problem-title-0","text":"信息分散","textPreview":"信息分散","textChars":4,"textLines":1,"bbox":[52,302,330,40]}
+{"kind":"textbox","id":"sh/wru18vq5","slide":2,"name":"problem-body-0","text":"PDF、PPT、Word 与网页散落在不同课程和文件夹中，缺少统一入口。","textPreview":"PDF、PPT、Word 与网页散落在不同课程和文件夹中，缺少统一入口。","textChars":36,"textLines":1,"bbox":[52,360,330,138]}
+{"kind":"textbox","id":"sh/xs3i10rq","slide":2,"name":"problem-big-1","text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[438,196,330,86]}
+{"kind":"textbox","id":"sh/qt8zu18v","slide":2,"name":"problem-title-1","text":"定位低效","textPreview":"定位低效","textChars":4,"textLines":1,"bbox":[438,302,330,40]}
+{"kind":"textbox","id":"sh/ruh0n690","slide":2,"name":"problem-body-1","text":"全文翻找耗时；扫描版 PDF 还需要 OCR，复杂版面更难直接提取。","textPreview":"全文翻找耗时；扫描版 PDF 还需要 OCR，复杂版面更难直接提取。","textChars":34,"textLines":1,"bbox":[438,360,330,138]}
+{"kind":"textbox","id":"sh/3ep0red8","slide":2,"name":"problem-big-2","text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[824,196,330,86]}
+{"kind":"textbox","id":"sh/2dgzy9wn","slide":2,"name":"problem-title-2","text":"答案难验证","textPreview":"答案难验证","textChars":5,"textLines":1,"bbox":[824,302,330,40]}
+{"kind":"textbox","id":"sh/pgritove","slide":2,"name":"problem-body-2","text":"普通聊天可以给出结论，却常常缺少页码、幻灯片或章节来源。","textPreview":"普通聊天可以给出结论，却常常缺少页码、幻灯片或章节来源。","textChars":28,"textLines":1,"bbox":[824,360,330,138]}
+{"kind":"shape","id":"sh/5oni14za","slide":2,"name":"problem-rule","bbox":[52,552,1176,0]}
+{"kind":"textbox","id":"sh/fqp0nedc","slide":2,"name":"problem-answer","text":"我的选择：做一个本地优先、带引用的课程知识库，并把常用校园工具集中到同一桌面端。","textPreview":"我的选择：做一个本地优先、带引用的课程知识库，并把常用校园工具集中到同一桌面端。","textChars":40,"textLines":1,"bbox":[52,584,1130,54]}
+{"kind":"notes","id":"nt/jx0b09","slide":2,"text":""}
+{"kind":"slide","id":"sl/qm043i","slide":3,"title":"02 · 功能全景","textShapes":22}
+{"kind":"textbox","id":"sh/czmpwvi9","slide":3,"name":"kicker-3","text":"02 · 功能全景","textPreview":"02 · 功能全景","textChars":9,"textLines":1,"bbox":[52,30,500,26]}
+{"kind":"textbox","id":"sh/byt8nqho","slide":3,"name":"title-3","text":"JiaYuan 已形成 6 个可切换的学习工作区","textPreview":"JiaYuan 已形成 6 个可切换的学习工作区","textChars":24,"textLines":1,"bbox":[52,62,1160,74]}
+{"kind":"textbox","id":"sh/adk7ul03","slide":3,"name":"footer-3","text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[1180,672,48,20]}
+{"kind":"shape","id":"sh/pcbqlgzy","slide":3,"name":"feature-1-circle","bbox":[52,174,38,38]}
+{"kind":"textbox","id":"sh/ob2psbid","slide":3,"name":"feature-1-number","text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[52,175,38,34]}
+{"kind":"textbox","id":"sh/nat8j6hs","slide":3,"name":"feature-1-title","text":"XMU_RAG","textPreview":"XMU_RAG","textChars":7,"textLines":1,"bbox":[106,173,492,34]}
+{"kind":"textbox","id":"sh/29k7ql07","slide":3,"name":"feature-1-body","text":"拖拽/URL 导入、范围检索、流式问答、引用跳转","textPreview":"拖拽/URL 导入、范围检索、流式问答、引用跳转","textChars":24,"textLines":1,"bbox":[106,214,492,70]}
+{"kind":"shape","id":"sh/t8fqxkz2","slide":3,"name":"feature-2-circle","bbox":[672,174,38,38]}
+{"kind":"textbox","id":"sh/87694fih","slide":3,"name":"feature-2-number","text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[672,175,38,34]}
+{"kind":"textbox","id":"sh/ylgfydsf","slide":3,"name":"feature-2-title","text":"XMU_Library","textPreview":"XMU_Library","textChars":11,"textLines":1,"bbox":[726,173,502,34]}
+{"kind":"textbox","id":"sh/zmpgrit0","slide":3,"name":"feature-2-body","text":"课程树、模糊搜索、移动/删除、预览与重新索引","textPreview":"课程树、模糊搜索、移动/删除、预览与重新索引","textChars":22,"textLines":1,"bbox":[726,214,502,70]}
+{"kind":"shape","id":"sh/knyx0nal","slide":3,"name":"feature-3-circle","bbox":[52,318,38,38]}
+{"kind":"textbox","id":"sh/lo7ytsb6","slide":3,"name":"feature-3-number","text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[52,319,38,34]}
+{"kind":"textbox","id":"sh/qhgfudsj","slide":3,"name":"feature-3-title","text":"XMU_RollCall","textPreview":"XMU_RollCall","textChars":12,"textLines":1,"bbox":[106,317,492,34]}
+{"kind":"textbox","id":"sh/bipwnyt4","slide":3,"name":"feature-3-body","text":"统一身份认证、签到策略、流式任务日志","textPreview":"统一身份认证、签到策略、流式任务日志","textChars":18,"textLines":1,"bbox":[106,358,492,70]}
+{"kind":"shape","id":"sh/cjyxw3ap","slide":3,"name":"feature-4-circle","bbox":[672,318,38,38]}
+{"kind":"textbox","id":"sh/dk7yp8ba","slide":3,"name":"feature-4-number","text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[672,319,38,34]}
+{"kind":"textbox","id":"sh/ud0f6xsn","slide":3,"name":"feature-4-title","text":"XMU_DeadLines","textPreview":"XMU_DeadLines","textChars":13,"textLines":1,"bbox":[726,317,502,34]}
+{"kind":"textbox","id":"sh/ve9gz2t8","slide":3,"name":"feature-4-body","text":"同步课程作业与考试截止时间，按紧急度展示","textPreview":"同步课程作业与考试截止时间，按紧急度展示","textChars":20,"textLines":1,"bbox":[726,358,502,70]}
+{"kind":"shape","id":"sh/rylcru9k","slide":3,"name":"feature-5-circle","bbox":[52,462,38,38]}
+{"kind":"textbox","id":"sh/6xsvyp8f","slide":3,"name":"feature-5-number","text":"5","textPreview":"5","textChars":1,"textLines":1,"bbox":[52,463,38,34]}
+{"kind":"textbox","id":"sh/t03ut4rq","slide":3,"name":"feature-5-title","text":"XMU_OJ","textPreview":"XMU_OJ","textChars":6,"textLines":1,"bbox":[106,461,492,34]}
+{"kind":"textbox","id":"sh/szud0zq5","slide":3,"name":"feature-5-body","text":"读取实验题目、模型生成代码、提交并轮询评测","textPreview":"读取实验题目、模型生成代码、提交并轮询评测","textChars":21,"textLines":1,"bbox":[106,502,492,70]}
+{"kind":"shape","id":"sh/fmlcve9w","slide":3,"name":"feature-6-circle","bbox":[672,462,38,38]}
+{"kind":"textbox","id":"sh/elcv298b","slide":3,"name":"feature-6-number","text":"6","textPreview":"6","textChars":1,"textLines":1,"bbox":[672,463,38,34]}
+{"kind":"textbox","id":"sh/1o3ux4r2","slide":3,"name":"feature-6-title","text":"Settings","textPreview":"Settings","textChars":8,"textLines":1,"bbox":[726,461,502,34]}
+{"kind":"textbox","id":"sh/gnud4zqh","slide":3,"name":"feature-6-body","text":"多模型配置、PyMuPDF/Marker/MinerU 与 CPU/GPU 初始化","textPreview":"多模型配置、PyMuPDF/Marker/MinerU 与 CPU/GPU 初始化","textChars":41,"textLines":1,"bbox":[726,502,502,70]}
+{"kind":"textbox","id":"sh/3q5cze9s","slide":3,"name":"workspace-note","text":"主界面通过 KeepAlive 保留各模块状态，适合在问答、资料管理和校园任务之间来回切换。","textPreview":"主界面通过 KeepAlive 保留各模块状态，适合在问答、资料管理和校园任务之间来回切换。","textChars":46,"textLines":1,"bbox":[52,616,1110,36]}
+{"kind":"notes","id":"nt/qm043i","slide":3,"text":""}
+{"kind":"slide","id":"sl/ea38oo","slide":4,"title":"03 · 系统架构","textShapes":14}
+{"kind":"textbox","id":"sh/fy5c7idc","slide":4,"name":"kicker-4","text":"03 · 系统架构","textPreview":"03 · 系统架构","textChars":9,"textLines":1,"bbox":[52,30,500,26]}
+{"kind":"textbox","id":"sh/gzed03ux","slide":4,"name":"title-4","text":"四层分工让界面、业务、数据和桌面交付彼此解耦","textPreview":"四层分工让界面、业务、数据和桌面交付彼此解耦","textChars":22,"textLines":1,"bbox":[52,62,1160,74]}
+{"kind":"textbox","id":"sh/h0nu98bi","slide":4,"name":"footer-4","text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[1180,672,48,20]}
+{"kind":"shape","id":"sh/wr61sz2x","slide":4,"name":"arch-arrow-0","bbox":[270,324,56,0]}
+{"kind":"shape","id":"sh/xsf214ji","slide":4,"name":"arch-arrow-1","bbox":[532,324,56,0]}
+{"kind":"shape","id":"sh/q9kje5kn","slide":4,"name":"arch-arrow-2","bbox":[794,324,56,0]}
+{"kind":"shape","id":"sh/p47edsbu","slide":4,"name":"arch-card-0","bbox":[64,246,206,224]}
+{"kind":"textbox","id":"sh/qpgv6xcz","slide":4,"name":"arch-card-title-0","text":"Vue 3 前端","textPreview":"Vue 3 前端","textChars":8,"textLines":1,"bbox":[84,268,166,40]}
+{"kind":"textbox","id":"sh/rqpwf2tk","slide":4,"name":"arch-card-body-0","text":"Element Plus\n交互与展示\nReadableStream","textPreview":"Element Plus | 交互与展示 | ReadableStream","textChars":33,"textLines":3,"bbox":[84,328,166,110]}
+{"kind":"shape","id":"sh/v2p8z2xo","slide":4,"name":"arch-card-1","bbox":[326,246,206,224]}
+{"kind":"textbox","id":"sh/u1g76xw3","slide":4,"name":"arch-card-title-1","text":"FastAPI 路由","textPreview":"FastAPI 路由","textChars":10,"textLines":1,"bbox":[346,268,166,40]}
+{"kind":"textbox","id":"sh/h47q1cfu","slide":4,"name":"arch-card-body-1","text":"chat / rag / library\ncampus / deadlines\noj / engine","textPreview":"chat / rag / library | campus / deadlines | oj / engine","textChars":51,"textLines":3,"bbox":[346,328,166,110]}
+{"kind":"shape","id":"sh/g3yp87e9","slide":4,"name":"arch-card-2","bbox":[588,246,206,224]}
+{"kind":"textbox","id":"sh/7yp8v2xs","slide":4,"name":"arch-card-title-2","text":"业务核心层","textPreview":"业务核心层","textChars":5,"textLines":1,"bbox":[608,268,166,40]}
+{"kind":"textbox","id":"sh/6xw72xw7","slide":4,"name":"arch-card-body-2","text":"文档解析与校验\nRAG 检索与状态补偿\n校园认证与 OJ","textPreview":"文档解析与校验 | RAG 检索与状态补偿 | 校园认证与 OJ","textChars":28,"textLines":3,"bbox":[608,328,166,110]}
+{"kind":"shape","id":"sh/t07qxsfy","slide":4,"name":"arch-card-3","bbox":[850,246,206,224]}
+{"kind":"textbox","id":"sh/8zyp47ed","slide":4,"name":"arch-card-title-3","text":"本地数据层","textPreview":"本地数据层","textChars":5,"textLines":1,"bbox":[870,268,166,40]}
+{"kind":"textbox","id":"sh/ru987mdw","slide":4,"name":"arch-card-body-3","text":"SQLite · Chroma\nuploads · models\nengine flags","textPreview":"SQLite · Chroma | uploads · models | engine flags","textChars":45,"textLines":3,"bbox":[870,328,166,110]}
+{"kind":"shape","id":"sh/qt07ehwb","slide":4,"name":"arch-electron-box","bbox":[1082,198,146,316]}
+{"kind":"textbox","id":"sh/m14jmpkv","slide":4,"name":"arch-electron-title","text":"Electron","textPreview":"Electron","textChars":8,"textLines":1,"bbox":[1094,226,122,36]}
+{"kind":"textbox","id":"sh/n2xkvulg","slide":4,"name":"arch-electron-body","text":"桌面壳\n\n私有 Python\n模型归档\n\n后端进程\n探活与回收","textPreview":"桌面壳 |  | 私有 Python | 模型归档 |  | 后端进程 | 探活与回收","textChars":31,"textLines":7,"bbox":[1102,294,106,172]}
+{"kind":"textbox","id":"sh/o361of21","slide":4,"name":"arch-mode-note","text":"开发：Vue :5173 + FastAPI :8000    |    桌面：静态前端 + Electron 管理 FastAPI :8765","textPreview":"开发：Vue :5173 + FastAPI :8000    |    桌面：静态前端 + Electron 管理 FastAPI :8765","textChars":72,"textLines":1,"bbox":[52,574,980,42]}
+{"kind":"notes","id":"nt/ea38oo","slide":4,"text":""}
+{"kind":"slide","id":"sl/pg5has","slide":5,"title":"04 · RAG 入库链路","textShapes":24}
+{"kind":"textbox","id":"sh/qhcji54r","slide":5,"name":"kicker-5","text":"04 · RAG 入库链路","textPreview":"04 · RAG 入库链路","textChars":13,"textLines":1,"bbox":[52,30,500,26]}
+{"kind":"textbox","id":"sh/dk3itk3i","slide":5,"name":"title-5","text":"入库状态机让文档处理可观察、可恢复","textPreview":"入库状态机让文档处理可观察、可恢复","textChars":17,"textLines":1,"bbox":[52,62,1160,74]}
+{"kind":"textbox","id":"sh/cju1kfmx","slide":5,"name":"footer-5","text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1180,672,48,20]}
+{"kind":"shape","id":"sh/apg7u9cb","slide":5,"name":"ingest-arrow-0","bbox":[234,278,82,0]}
+{"kind":"shape","id":"sh/bqponedw","slide":5,"name":"ingest-arrow-1","bbox":[458,278,82,0]}
+{"kind":"shape","id":"sh/ruxwb618","slide":5,"name":"ingest-arrow-2","bbox":[682,278,82,0]}
+{"kind":"shape","id":"sh/qtov2l03","slide":5,"name":"ingest-arrow-3","bbox":[906,278,82,0]}
+{"kind":"shape","id":"sh/7a50zulk","slide":5,"name":"ingest-node-0","bbox":[92,236,84,84]}
+{"kind":"textbox","id":"sh/m9wjqp4z","slide":5,"name":"ingest-num-0","text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[92,249,84,44]}
+{"kind":"textbox","id":"sh/8v6t87mh","slide":5,"name":"ingest-title-0","text":"校验","textPreview":"校验","textChars":2,"textLines":1,"bbox":[60,340,148,34]}
+{"kind":"textbox","id":"sh/twfa1cn2","slide":5,"name":"ingest-body-0","text":"扩展名 / MIME\n文件签名 / ZIP 安全","textPreview":"扩展名 / MIME | 文件签名 / ZIP 安全","textChars":24,"textLines":2,"bbox":[50,386,168,70]}
+{"kind":"shape","id":"sh/6tor6x4b","slide":5,"name":"ingest-node-1","bbox":[316,236,84,84]}
+{"kind":"textbox","id":"sh/7uxsz25w","slide":5,"name":"ingest-num-1","text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[316,249,84,44]}
+{"kind":"textbox","id":"sh/gjqtc7md","slide":5,"name":"ingest-title-1","text":"解析","textPreview":"解析","textChars":2,"textLines":1,"bbox":[284,340,148,34]}
+{"kind":"textbox","id":"sh/hkza5cny","slide":5,"name":"ingest-body-1","text":"PyMuPDF\nOCR 或视觉引擎","textPreview":"PyMuPDF | OCR 或视觉引擎","textChars":17,"textLines":2,"bbox":[274,386,168,70]}
+{"kind":"shape","id":"sh/uhobah4n","slide":5,"name":"ingest-node-2","bbox":[540,236,84,84]}
+{"kind":"textbox","id":"sh/vixs3258","slide":5,"name":"ingest-num-2","text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[540,249,84,44]}
+{"kind":"textbox","id":"sh/4nqtgrmp","slide":5,"name":"ingest-title-2","text":"切片","textPreview":"切片","textChars":2,"textLines":1,"bbox":[508,340,148,34]}
+{"kind":"textbox","id":"sh/5oza9wna","slide":5,"name":"ingest-body-2","text":"章节优先\n500 字 + 50 重叠","textPreview":"章节优先 | 500 字 + 50 重叠","textChars":18,"textLines":2,"bbox":[498,386,168,70]}
+{"kind":"shape","id":"sh/d4vatcve","slide":5,"name":"ingest-node-3","bbox":[764,236,84,84]}
+{"kind":"textbox","id":"sh/c3m90ret","slide":5,"name":"ingest-num-3","text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[764,249,84,44]}
+{"kind":"textbox","id":"sh/r2dsrmd8","slide":5,"name":"ingest-title-3","text":"索引","textPreview":"索引","textChars":2,"textLines":1,"bbox":[732,340,148,34]}
+{"kind":"textbox","id":"sh/q14ryhwn","slide":5,"name":"ingest-body-3","text":"BGE embedding\n写入 Chroma","textPreview":"BGE embedding | 写入 Chroma","textChars":23,"textLines":2,"bbox":[722,386,168,70]}
+{"kind":"shape","id":"sh/18faxwva","slide":5,"name":"ingest-node-4","bbox":[988,236,84,84]}
+{"kind":"textbox","id":"sh/076t4rep","slide":5,"name":"ingest-num-4","text":"5","textPreview":"5","textChars":1,"textLines":1,"bbox":[988,249,84,44]}
+{"kind":"textbox","id":"sh/z6xsvmdk","slide":5,"name":"ingest-title-4","text":"就绪","textPreview":"就绪","textChars":2,"textLines":1,"bbox":[956,340,148,34]}
+{"kind":"textbox","id":"sh/e54b2hwz","slide":5,"name":"ingest-body-4","text":"记录页数、耗时\nchunk 数与引擎","textPreview":"记录页数、耗时 | chunk 数与引擎","textChars":18,"textLines":2,"bbox":[946,386,168,70]}
+{"kind":"shape","id":"sh/3u9sn29k","slide":5,"name":"ingest-rule","bbox":[52,500,1176,0]}
+{"kind":"textbox","id":"sh/gb29s7el","slide":5,"name":"ingest-dedup-title","text":"去重","textPreview":"去重","textChars":2,"textLines":1,"bbox":[68,534,120,32]}
+{"kind":"textbox","id":"sh/6h07mtcj","slide":5,"name":"ingest-dedup-body","text":"SHA‑256 复用已就绪文件","textPreview":"SHA‑256 复用已就绪文件","textChars":15,"textLines":1,"bbox":[68,568,290,34]}
+{"kind":"textbox","id":"sh/7i98vyd4","slide":5,"name":"ingest-state-title","text":"状态","textPreview":"状态","textChars":2,"textLines":1,"bbox":[428,534,120,32]}
+{"kind":"textbox","id":"sh/sjipo3up","slide":5,"name":"ingest-state-body","text":"uploaded → parsing → indexing → ready / failed","textPreview":"uploaded → parsing → indexing → ready / failed","textChars":46,"textLines":1,"bbox":[428,568,420,34]}
+{"kind":"textbox","id":"sh/tkrqx8bu","slide":5,"name":"ingest-comp-title","text":"补偿","textPreview":"补偿","textChars":2,"textLines":1,"bbox":[920,534,120,32]}
+{"kind":"textbox","id":"sh/ul07qdcf","slide":5,"name":"ingest-comp-body","text":"失败按 file_id 清理孤儿向量","textPreview":"失败按 file_id 清理孤儿向量","textChars":18,"textLines":1,"bbox":[920,568,270,34]}
+{"kind":"notes","id":"nt/pg5has","slide":5,"text":""}
+{"kind":"slide","id":"sl/05laa5","slide":6,"title":"05 · RAG 问答链路","textShapes":16}
+{"kind":"textbox","id":"sh/8bapw3ah","slide":6,"name":"kicker-6","text":"05 · RAG 问答链路","textPreview":"05 · RAG 问答链路","textChars":13,"textLines":1,"bbox":[52,30,500,26]}
+{"kind":"textbox","id":"sh/7q1onytw","slide":6,"name":"title-6","text":"答案可信度来自“混合检索 + 证据门槛 + 可点击引用”","textPreview":"答案可信度来自“混合检索 + 证据门槛 + 可点击引用”","textChars":28,"textLines":1,"bbox":[52,62,1160,74]}
+{"kind":"textbox","id":"sh/6ps7utsb","slide":6,"name":"footer-6","text":"06","textPreview":"06","textChars":2,"textLines":1,"bbox":[1180,672,48,20]}
+{"kind":"textbox","id":"sh/loj6lobq","slide":6,"name":"retrieval-num-0","text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[52,178,80,44]}
+{"kind":"textbox","id":"sh/knapsja5","slide":6,"name":"retrieval-title-0","text":"范围过滤","textPreview":"范围过滤","textChars":4,"textLines":1,"bbox":[144,178,440,40]}
+{"kind":"textbox","id":"sh/jm1ojetk","slide":6,"name":"retrieval-body-0","text":"course_id 与 file_ids 先限定检索范围，避免跨课程混入。","textPreview":"course_id 与 file_ids 先限定检索范围，避免跨课程混入。","textChars":37,"textLines":1,"bbox":[144,226,430,78]}
+{"kind":"textbox","id":"sh/yl87q9sf","slide":6,"name":"retrieval-num-1","text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[662,178,80,44]}
+{"kind":"textbox","id":"sh/xkz6hobu","slide":6,"name":"retrieval-title-1","text":"混合召回","textPreview":"混合召回","textChars":4,"textLines":1,"bbox":[754,178,440,40]}
+{"kind":"textbox","id":"sh/wjqpoja9","slide":6,"name":"retrieval-body-1","text":"Chroma 向量 Top 10 与 BM25 / 查询覆盖率共同计分。","textPreview":"Chroma 向量 Top 10 与 BM25 / 查询覆盖率共同计分。","textChars":36,"textLines":1,"bbox":[754,226,430,78]}
+{"kind":"textbox","id":"sh/qx8va9c3","slide":6,"name":"retrieval-num-2","text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[52,378,80,44]}
+{"kind":"textbox","id":"sh/ryhw3uto","slide":6,"name":"retrieval-title-2","text":"质量筛选","textPreview":"质量筛选","textChars":4,"textLines":1,"bbox":[144,378,440,40]}
+{"kind":"textbox","id":"sh/czqdczu9","slide":6,"name":"retrieval-body-2","text":"MMR 去重，可选 CrossEncoder；最低相关度默认 0.55。","textPreview":"MMR 去重，可选 CrossEncoder；最低相关度默认 0.55。","textChars":36,"textLines":1,"bbox":[144,426,430,78]}
+{"kind":"textbox","id":"sh/d0ze54bu","slide":6,"name":"retrieval-num-3","text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[662,378,80,44]}
+{"kind":"textbox","id":"sh/itov6pc7","slide":6,"name":"retrieval-title-3","text":"来源追踪","textPreview":"来源追踪","textChars":4,"textLines":1,"bbox":[754,378,440,40]}
+{"kind":"textbox","id":"sh/3uxwzuds","slide":6,"name":"retrieval-body-3","text":"最终 Top 3 保留页码、幻灯片、章节、引擎与文件来源。","textPreview":"最终 Top 3 保留页码、幻灯片、章节、引擎与文件来源。","textChars":29,"textLines":1,"bbox":[754,426,430,78]}
+{"kind":"shape","id":"sh/4v6d8zux","slide":6,"name":"retrieval-outcome","bbox":[52,570,1176,70]}
+{"kind":"textbox","id":"sh/pwfe14vi","slide":6,"name":"retrieval-outcome-text","text":"资料不足 → 明确返回“没有足够依据”    |    资料充分 → 注入上下文，再流式调用大模型生成答案","textPreview":"资料不足 → 明确返回“没有足够依据”    |    资料充分 → 注入上下文，再流式调用大模型生成答案","textChars":53,"textLines":1,"bbox":[78,588,1124,36]}
+{"kind":"notes","id":"nt/05laa5","slide":6,"text":""}
+{"kind":"slide","id":"sl/ett6bs","slide":7,"title":"06 · 文档解析策略","textShapes":13}
+{"kind":"textbox","id":"sh/ip8b21s3","slide":7,"name":"kicker-7","text":"06 · 文档解析策略","textPreview":"06 · 文档解析策略","textChars":11,"textLines":1,"bbox":[52,30,500,26]}
+{"kind":"textbox","id":"sh/5sjudgru","slide":7,"name":"title-7","text":"同一条管线兼容 6 类资料，复杂 PDF 按需升级解析","textPreview":"同一条管线兼容 6 类资料，复杂 PDF 按需升级解析","textChars":27,"textLines":1,"bbox":[52,62,1160,74]}
+{"kind":"textbox","id":"sh/4rat4ba9","slide":7,"name":"footer-7","text":"07","textPreview":"07","textChars":2,"textLines":1,"bbox":[1180,672,48,20]}
+{"kind":"shape","id":"sh/tkzm9g7m","slide":7,"name":"parse-timeline","bbox":[96,518,1088,0]}
+{"kind":"shape","id":"sh/6tsb61sf","slide":7,"name":"parse-card-0","bbox":[96,186,320,292]}
+{"kind":"textbox","id":"sh/dwjuhgrq","slide":7,"name":"parse-card-title-0","text":"轻量原生解析","textPreview":"轻量原生解析","textChars":6,"textLines":1,"bbox":[120,214,272,38]}
+{"kind":"textbox","id":"sh/svat8ba5","slide":7,"name":"parse-card-body-0","text":"PDF / DOCX / PPTX\nMarkdown / HTML / URL\n\n优先使用格式原生结构，速度快、依赖轻。","textPreview":"PDF / DOCX / PPTX | Markdown / HTML / URL |  | 优先使用格式原生结构，速度快、依赖轻。","textChars":60,"textLines":4,"bbox":[120,274,272,150]}
+{"kind":"shape","id":"sh/filcjq9w","slide":7,"name":"parse-dot-0","bbox":[90,510,16,16]}
+{"kind":"textbox","id":"sh/ehcvalsb","slide":7,"name":"parse-label-0","text":"默认","textPreview":"默认","textChars":2,"textLines":1,"bbox":[96,548,170,34]}
+{"kind":"shape","id":"sh/grqlk7yt","slide":7,"name":"parse-card-1","bbox":[464,186,320,292]}
+{"kind":"textbox","id":"sh/1szmdcfe","slide":7,"name":"parse-card-title-1","text":"扫描页自动兜底","textPreview":"扫描页自动兜底","textChars":7,"textLines":1,"bbox":[488,214,272,38]}
+{"kind":"textbox","id":"sh/e5o3ihgn","slide":7,"name":"parse-card-body-1","text":"PyMuPDF 发现页面无有效文本时，自动调用内置 Tesseract 中文 OCR。","textPreview":"PyMuPDF 发现页面无有效文本时，自动调用内置 Tesseract 中文 OCR。","textChars":43,"textLines":1,"bbox":[488,274,272,150]}
+{"kind":"shape","id":"sh/f6h4bmx8","slide":7,"name":"parse-dot-1","bbox":[458,510,16,16]}
+{"kind":"textbox","id":"sh/ovq5oryp","slide":7,"name":"parse-label-1","text":"按页","textPreview":"按页","textChars":2,"textLines":1,"bbox":[464,548,170,34]}
+{"kind":"shape","id":"sh/pwzmhwfa","slide":7,"name":"parse-card-2","bbox":[832,186,320,292]}
+{"kind":"textbox","id":"sh/2t8nmhgz","slide":7,"name":"parse-card-title-2","text":"复杂版面视觉解析","textPreview":"复杂版面视觉解析","textChars":8,"textLines":1,"bbox":[856,214,272,38]}
+{"kind":"textbox","id":"sh/3uh4fmx4","slide":7,"name":"parse-card-body-2","text":"Marker / MinerU 按需安装；支持 CPU/GPU、完整性检查、真实 PDF 探针与超时回收。","textPreview":"Marker / MinerU 按需安装；支持 CPU/GPU、完整性检查、真实 PDF 探针与超时回收。","textChars":53,"textLines":1,"bbox":[856,274,272,150]}
+{"kind":"shape","id":"sh/cza5sry1","slide":7,"name":"parse-dot-2","bbox":[826,510,16,16]}
+{"kind":"textbox","id":"sh/x0jmlwfm","slide":7,"name":"parse-label-2","text":"可选","textPreview":"可选","textChars":2,"textLines":1,"bbox":[832,548,170,34]}
+{"kind":"textbox","id":"sh/lgfm5w7q","slide":7,"name":"parse-unified","text":"所有解析器最终统一输出 text / section / location_type / location_index，进入同一切片、检索与引用流程。","textPreview":"所有解析器最终统一输出 text / section / location_type / location_index，进入同一切片、检索与引用流程。","textChars":75,"textLines":1,"bbox":[52,620,1120,32]}
+{"kind":"notes","id":"nt/ett6bs","slide":7,"text":""}
+{"kind":"slide","id":"sl/nox9kr","slide":8,"title":"07 · 桌面交付","textShapes":13}
+{"kind":"textbox","id":"sh/tgfu9sni","slide":8,"name":"kicker-8","text":"07 · 桌面交付","textPreview":"07 · 桌面交付","textChars":9,"textLines":1,"bbox":[52,30,500,26]}
+{"kind":"textbox","id":"sh/6dobyx47","slide":8,"name":"title-8","text":"Electron 将项目封装为无需预装环境的 Windows 应用","textPreview":"Electron 将项目封装为无需预装环境的 Windows 应用","textChars":33,"textLines":1,"bbox":[52,62,1160,74]}
+{"kind":"textbox","id":"sh/7exc725c","slide":8,"name":"footer-8","text":"08","textPreview":"08","textChars":2,"textLines":1,"bbox":[1180,672,48,20]}
+{"kind":"shape","id":"sh/kruh8f29","slide":8,"name":"desktop-line","bbox":[72,560,1120,0]}
+{"kind":"shape","id":"sh/hkzudcnu","slide":8,"name":"desktop-card-0","bbox":[64,180,340,330]}
+{"kind":"textbox","id":"sh/uhob2x43","slide":8,"name":"desktop-title-0","text":"构建私有运行时","textPreview":"构建私有运行时","textChars":7,"textLines":1,"bbox":[92,218,284,42]}
+{"kind":"textbox","id":"sh/vixcb25o","slide":8,"name":"desktop-body-0","text":"下载嵌入式 Python，安装后端依赖与基础 BGE 模型，离线导入验证后生成 runtime tar。","textPreview":"下载嵌入式 Python，安装后端依赖与基础 BGE 模型，离线导入验证后生成 runtime tar。","textChars":52,"textLines":1,"bbox":[92,290,284,142]}
+{"kind":"shape","id":"sh/cnmts3mp","slide":8,"name":"desktop-dot-0","bbox":[60,552,16,16]}
+{"kind":"textbox","id":"sh/xovu18na","slide":8,"name":"desktop-label-0","text":"构建阶段","textPreview":"构建阶段","textChars":4,"textLines":1,"bbox":[64,586,200,34]}
+{"kind":"shape","id":"sh/h0r6dsr2","slide":8,"name":"desktop-card-1","bbox":[454,180,340,330]}
+{"kind":"textbox","id":"sh/gzipknah","slide":8,"name":"desktop-title-1","text":"首次启动释放资源","textPreview":"首次启动释放资源","textChars":8,"textLines":1,"bbox":[482,218,284,42]}
+{"kind":"textbox","id":"sh/vy9obi9c","slide":8,"name":"desktop-body-1","text":"比较 runtime manifest，将 Python、模型与数据目录释放到用户数据目录。","textPreview":"比较 runtime manifest，将 Python、模型与数据目录释放到用户数据目录。","textChars":46,"textLines":1,"bbox":[482,290,284,142]}
+{"kind":"shape","id":"sh/ud0nidsr","slide":8,"name":"desktop-dot-1","bbox":[450,552,16,16]}
+{"kind":"textbox","id":"sh/54b6hsre","slide":8,"name":"desktop-label-1","text":"首次启动","textPreview":"首次启动","textChars":4,"textLines":1,"bbox":[454,586,200,34]}
+{"kind":"shape","id":"sh/43iponat","slide":8,"name":"desktop-card-2","bbox":[844,180,340,330]}
+{"kind":"textbox","id":"sh/329ofi98","slide":8,"name":"desktop-title-2","text":"日常启动与回收","textPreview":"日常启动与回收","textChars":7,"textLines":1,"bbox":[872,218,284,42]}
+{"kind":"textbox","id":"sh/i107mxsn","slide":8,"name":"desktop-body-2","text":"单实例锁 → splash → 启动 FastAPI → 轮询 /api/health → 加载前端；退出时终止后端进程树。","textPreview":"单实例锁 → splash → 启动 FastAPI → 轮询 /api/health → 加载前端；退出时终止后端进程树。","textChars":62,"textLines":1,"bbox":[872,290,284,142]}
+{"kind":"shape","id":"sh/d8b6lcra","slide":8,"name":"desktop-dot-2","bbox":[840,552,16,16]}
+{"kind":"textbox","id":"sh/s72ps7ap","slide":8,"name":"desktop-label-2","text":"每次启动","textPreview":"每次启动","textChars":4,"textLines":1,"bbox":[844,586,200,34]}
+{"kind":"textbox","id":"sh/cnuh4fmd","slide":8,"name":"desktop-note","text":"交付形态：electron-builder + NSIS x64，一键安装、创建桌面/开始菜单快捷方式，卸载默认保留用户知识库。","textPreview":"交付形态：electron-builder + NSIS x64，一键安装、创建桌面/开始菜单快捷方式，卸载默认保留用户知识库。","textChars":64,"textLines":1,"bbox":[52,640,1120,30]}
+{"kind":"notes","id":"nt/nox9kr","slide":8,"text":""}
+{"kind":"slide","id":"sl/yge39a","slide":9,"title":"08 · 完成度与验证","textShapes":24}
+{"kind":"textbox","id":"sh/ore5or29","slide":9,"name":"kicker-9","text":"08 · 完成度与验证","textPreview":"08 · 完成度与验证","textChars":11,"textLines":1,"bbox":[52,30,500,26]}
+{"kind":"textbox","id":"sh/nql4fmlo","slide":9,"name":"title-9","text":"工程质量体现在“能构建、可恢复、边界清楚”","textPreview":"工程质量体现在“能构建、可恢复、边界清楚”","textChars":21,"textLines":1,"bbox":[52,62,1160,74]}
+{"kind":"textbox","id":"sh/2pcnmhkj","slide":9,"name":"footer-9","text":"09","textPreview":"09","textChars":2,"textLines":1,"bbox":[1180,672,48,20]}
+{"kind":"textbox","id":"sh/xgnmlwj6","slide":9,"name":"metric-files-value","text":"37","textPreview":"37","textChars":2,"textLines":1,"bbox":[52,176,260,62]}
+{"kind":"textbox","id":"sh/cfe5sr2l","slide":9,"name":"metric-files-label","text":"个自有 Python / Vue / JS 源文件","textPreview":"个自有 Python / Vue / JS 源文件","textChars":25,"textLines":1,"bbox":[52,238,260,52]}
+{"kind":"textbox","id":"sh/be54jm10","slide":9,"name":"metric-lines-value","text":"≈ 7,990","textPreview":"≈ 7,990","textChars":7,"textLines":1,"bbox":[350,176,260,62]}
+{"kind":"textbox","id":"sh/atwnqhkf","slide":9,"name":"metric-lines-label","text":"行自有源码（本地统计）","textPreview":"行自有源码（本地统计）","textChars":11,"textLines":1,"bbox":[350,238,260,52]}
+{"kind":"textbox","id":"sh/lk76pwj2","slide":9,"name":"metric-routes-value","text":"7","textPreview":"7","textChars":1,"textLines":1,"bbox":[648,176,240,62]}
+{"kind":"textbox","id":"sh/kjy5wb2h","slide":9,"name":"metric-routes-label","text":"个 FastAPI 路由模块","textPreview":"个 FastAPI 路由模块","textChars":14,"textLines":1,"bbox":[648,238,240,52]}
+{"kind":"textbox","id":"sh/ytsrex0v","slide":9,"name":"metric-build-value","text":"1,915","textPreview":"1,915","textChars":5,"textLines":1,"bbox":[936,176,292,62]}
+{"kind":"textbox","id":"sh/zu1sn21g","slide":9,"name":"metric-build-label","text":"个前端模块完成生产构建","textPreview":"个前端模块完成生产构建","textChars":11,"textLines":1,"bbox":[936,238,292,52]}
+{"kind":"shape","id":"sh/g7ad8be1","slide":9,"name":"quality-rule","bbox":[52,316,1176,0]}
+{"kind":"shape","id":"sh/lw3apcj6","slide":9,"name":"quality-check-0","bbox":[52,366,28,28]}
+{"kind":"textbox","id":"sh/mxcrix0r","slide":9,"name":"quality-checkmark-0","text":"✓","textPreview":"✓","textChars":1,"textLines":1,"bbox":[52,365,28,28]}
+{"kind":"textbox","id":"sh/nylsr21c","slide":9,"name":"quality-title-0","text":"上传安全","textPreview":"上传安全","textChars":4,"textLines":1,"bbox":[96,364,156,30]}
+{"kind":"textbox","id":"sh/8zutk7ix","slide":9,"name":"quality-body-0","text":"扩展名、MIME、签名、ZIP 炸弹与 100 MiB 上限","textPreview":"扩展名、MIME、签名、ZIP 炸弹与 100 MiB 上限","textChars":30,"textLines":1,"bbox":[96,400,486,54]}
+{"kind":"shape","id":"sh/903atcji","slide":9,"name":"quality-check-1","bbox":[662,366,28,28]}
+{"kind":"textbox","id":"sh/218r6d0n","slide":9,"name":"quality-checkmark-1","text":"✓","textPreview":"✓","textChars":1,"textLines":1,"bbox":[662,365,28,28]}
+{"kind":"textbox","id":"sh/32hsfi18","slide":9,"name":"quality-title-1","text":"网页安全","textPreview":"网页安全","textChars":4,"textLines":1,"bbox":[706,364,156,30]}
+{"kind":"textbox","id":"sh/r6xo7eh0","slide":9,"name":"quality-body-1","text":"仅 HTTP/HTTPS HTML，限制重定向与 10 MiB，拒绝内网地址","textPreview":"仅 HTTP/HTTPS HTML，限制重定向与 10 MiB，拒绝内网地址","textChars":38,"textLines":1,"bbox":[706,400,486,54]}
+{"kind":"shape","id":"sh/65o7e9gf","slide":9,"name":"quality-check-2","bbox":[52,486,28,28]}
+{"kind":"textbox","id":"sh/t8f69oz6","slide":9,"name":"quality-checkmark-2","text":"✓","textPreview":"✓","textChars":1,"textLines":1,"bbox":[52,485,28,28]}
+{"kind":"textbox","id":"sh/s76pgjyl","slide":9,"name":"quality-title-2","text":"任务可靠性","textPreview":"任务可靠性","textChars":5,"textLines":1,"bbox":[96,484,156,30]}
+{"kind":"textbox","id":"sh/j2do3uho","slide":9,"name":"quality-body-2","text":"流式日志、心跳、超时、取消与子进程回收","textPreview":"流式日志、心跳、超时、取消与子进程回收","textChars":19,"textLines":1,"bbox":[96,520,486,54]}
+{"kind":"shape","id":"sh/i147apg3","slide":9,"name":"quality-check-3","bbox":[662,486,28,28]}
+{"kind":"textbox","id":"sh/54v654zu","slide":9,"name":"quality-checkmark-3","text":"✓","textPreview":"✓","textChars":1,"textLines":1,"bbox":[662,485,28,28]}
+{"kind":"textbox","id":"sh/43mpczy9","slide":9,"name":"quality-title-3","text":"数据一致性","textPreview":"数据一致性","textChars":5,"textLines":1,"bbox":[706,484,156,30]}
+{"kind":"textbox","id":"sh/3yh8fyh8","slide":9,"name":"quality-body-3","text":"启动恢复中断状态，向量写入前幂等删除，失败补偿清理","textPreview":"启动恢复中断状态，向量写入前幂等删除，失败补偿清理","textChars":25,"textLines":1,"bbox":[706,520,486,54]}
+{"kind":"textbox","id":"sh/2x87mtgn","slide":9,"name":"quality-boundary","text":"本次核验：Vite 生产构建通过；现有单元测试聚焦 4 个引擎进程场景，后续仍需补齐 RAG、路由和端到端测试。","textPreview":"本次核验：Vite 生产构建通过；现有单元测试聚焦 4 个引擎进程场景，后续仍需补齐 RAG、路由和端到端测试。","textChars":56,"textLines":1,"bbox":[52,620,1120,34]}
+{"kind":"notes","id":"nt/yge39a","slide":9,"text":""}
+{"kind":"slide","id":"sl/e8hy45","slide":10,"title":"05 · RAG 问答链路","textShapes":16}
+{"kind":"textbox","id":"sh/1szuxgfm","slide":10,"name":"kicker-6","text":"05 · RAG 问答链路","textPreview":"05 · RAG 问答链路","textChars":13,"textLines":1,"bbox":[52,30,500,26]}
+{"kind":"textbox","id":"sh/epobmlwv","slide":10,"name":"title-6","text":"答案可信度来自“混合检索 + 证据门槛 + 可点击引用”","textPreview":"答案可信度来自“混合检索 + 证据门槛 + 可点击引用”","textChars":28,"textLines":1,"bbox":[52,62,1160,74]}
+{"kind":"textbox","id":"sh/fqhcvqxg","slide":10,"name":"footer-6","text":"06","textPreview":"06","textChars":2,"textLines":1,"bbox":[1180,672,48,20]}
+{"kind":"textbox","id":"sh/ovqdsvex","slide":10,"name":"retrieval-num-0","text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[52,178,80,44]}
+{"kind":"textbox","id":"sh/pwzu10vi","slide":10,"name":"retrieval-title-0","text":"范围过滤","textPreview":"范围过滤","textChars":4,"textLines":1,"bbox":[144,178,440,40]}
+{"kind":"textbox","id":"sh/2t8vqlwr","slide":10,"name":"retrieval-body-0","text":"course_id 与 file_ids 先限定检索范围，避免跨课程混入。","textPreview":"course_id 与 file_ids 先限定检索范围，避免跨课程混入。","textChars":37,"textLines":1,"bbox":[144,226,430,78]}
+{"kind":"textbox","id":"sh/nuhczqdc","slide":10,"name":"retrieval-num-1","text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[662,178,80,44]}
+{"kind":"textbox","id":"sh/cjadwfe9","slide":10,"name":"retrieval-title-1","text":"混合召回","textPreview":"混合召回","textChars":4,"textLines":1,"bbox":[754,178,440,40]}
+{"kind":"textbox","id":"sh/xkju5kve","slide":10,"name":"retrieval-body-1","text":"Chroma 向量 Top 10 与 BM25 / 查询覆盖率共同计分。","textPreview":"Chroma 向量 Top 10 与 BM25 / 查询覆盖率共同计分。","textChars":36,"textLines":1,"bbox":[754,226,430,78]}
+{"kind":"textbox","id":"sh/1kj21k76","slide":10,"name":"retrieval-num-2","text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[52,378,80,44]}
+{"kind":"textbox","id":"sh/0jql8fql","slide":10,"name":"retrieval-title-2","text":"质量筛选","textPreview":"质量筛选","textChars":4,"textLines":1,"bbox":[144,378,440,40]}
+{"kind":"textbox","id":"sh/zihkza90","slide":10,"name":"retrieval-body-2","text":"MMR 去重，可选 CrossEncoder；最低相关度默认 0.55。","textPreview":"MMR 去重，可选 CrossEncoder；最低相关度默认 0.55。","textChars":36,"textLines":1,"bbox":[144,426,430,78]}
+{"kind":"textbox","id":"sh/ex8j658f","slide":10,"name":"retrieval-num-3","text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[662,378,80,44]}
+{"kind":"textbox","id":"sh/9oj25k72","slide":10,"name":"retrieval-title-3","text":"来源追踪","textPreview":"来源追踪","textChars":4,"textLines":1,"bbox":[754,378,440,40]}
+{"kind":"textbox","id":"sh/onalczqh","slide":10,"name":"retrieval-body-3","text":"最终 Top 3 保留页码、幻灯片、章节、引擎与文件来源。","textPreview":"最终 Top 3 保留页码、幻灯片、章节、引擎与文件来源。","textChars":29,"textLines":1,"bbox":[754,426,430,78]}
+{"kind":"shape","id":"sh/nm1k3upw","slide":10,"name":"retrieval-outcome","bbox":[52,570,1176,70]}
+{"kind":"textbox","id":"sh/mls3ap8r","slide":10,"name":"retrieval-outcome-text","text":"资料不足 → 明确返回“没有足够依据”    |    资料充分 → 注入上下文，再流式调用大模型生成答案","textPreview":"资料不足 → 明确返回“没有足够依据”    |    资料充分 → 注入上下文，再流式调用大模型生成答案","textChars":53,"textLines":1,"bbox":[78,588,1124,36]}
+{"kind":"notes","id":"nt/e8hy45","slide":10,"text":""}
+{"kind":"slide","id":"sl/e0rupt","slide":11,"title":"04 · RAG 入库链路","textShapes":24}
+{"kind":"textbox","id":"sh/idsr61cb","slide":11,"name":"kicker-5","text":"04 · RAG 入库链路","textPreview":"04 · RAG 入库链路","textChars":13,"textLines":1,"bbox":[52,30,500,26]}
+{"kind":"textbox","id":"sh/503a1gb2","slide":11,"name":"title-5","text":"入库状态机让文档处理可观察、可恢复","textPreview":"入库状态机让文档处理可观察、可恢复","textChars":17,"textLines":1,"bbox":[52,62,1160,74]}
+{"kind":"textbox","id":"sh/4zat8buh","slide":11,"name":"footer-5","text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1180,672,48,20]}
+{"kind":"shape","id":"sh/qlsjytwf","slide":11,"name":"ingest-arrow-0","bbox":[234,278,82,0]}
+{"kind":"shape","id":"sh/rm1kryd0","slide":11,"name":"ingest-arrow-1","bbox":[458,278,82,0]}
+{"kind":"shape","id":"sh/3ylg3uhw","slide":11,"name":"ingest-arrow-2","bbox":[682,278,82,0]}
+{"kind":"shape","id":"sh/ixcfapgb","slide":11,"name":"ingest-arrow-3","bbox":[906,278,82,0]}
+{"kind":"shape","id":"sh/n6hsrmdo","slide":11,"name":"ingest-node-0","bbox":[92,236,84,84]}
+{"kind":"textbox","id":"sh/m58ryhc3","slide":11,"name":"ingest-num-0","text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[92,249,84,44]}
+{"kind":"textbox","id":"sh/o32dsbax","slide":11,"name":"ingest-title-0","text":"校验","textPreview":"校验","textChars":2,"textLines":1,"bbox":[60,340,148,34]}
+{"kind":"textbox","id":"sh/94ve1gri","slide":11,"name":"ingest-body-0","text":"扩展名 / MIME\n文件签名 / ZIP 安全","textPreview":"扩展名 / MIME | 文件签名 / ZIP 安全","textChars":24,"textLines":2,"bbox":[50,386,168,70]}
+{"kind":"shape","id":"sh/m1kvq1sr","slide":11,"name":"ingest-node-1","bbox":[316,236,84,84]}
+{"kind":"textbox","id":"sh/n2twz69c","slide":11,"name":"ingest-num-1","text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[316,249,84,44]}
+{"kind":"textbox","id":"sh/0z2dora1","slide":11,"name":"ingest-title-1","text":"解析","textPreview":"解析","textChars":2,"textLines":1,"bbox":[284,340,148,34]}
+{"kind":"textbox","id":"sh/10bexwrm","slide":11,"name":"ingest-body-1","text":"PyMuPDF\nOCR 或视觉引擎","textPreview":"PyMuPDF | OCR 或视觉引擎","textChars":17,"textLines":2,"bbox":[274,386,168,70]}
+{"kind":"shape","id":"sh/exkvm1sv","slide":11,"name":"ingest-node-2","bbox":[540,236,84,84]}
+{"kind":"textbox","id":"sh/zytwv69g","slide":11,"name":"ingest-num-2","text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[540,249,84,44]}
+{"kind":"textbox","id":"sh/kvmx0vq5","slide":11,"name":"ingest-title-2","text":"切片","textPreview":"切片","textChars":2,"textLines":1,"bbox":[508,340,148,34]}
+{"kind":"textbox","id":"sh/lwfe90rq","slide":11,"name":"ingest-body-2","text":"章节优先\n500 字 + 50 重叠","textPreview":"章节优先 | 500 字 + 50 重叠","textChars":18,"textLines":2,"bbox":[498,386,168,70]}
+{"kind":"shape","id":"sh/tcbet0ju","slide":11,"name":"ingest-node-3","bbox":[764,236,84,84]}
+{"kind":"textbox","id":"sh/sb2dkvi9","slide":11,"name":"ingest-num-3","text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[764,249,84,44]}
+{"kind":"textbox","id":"sh/7qtwrq1o","slide":11,"name":"ingest-title-3","text":"索引","textPreview":"索引","textChars":2,"textLines":1,"bbox":[732,340,148,34]}
+{"kind":"textbox","id":"sh/6p0vil03","slide":11,"name":"ingest-body-3","text":"BGE embedding\n写入 Chroma","textPreview":"BGE embedding | 写入 Chroma","textChars":23,"textLines":2,"bbox":[722,386,168,70]}
+{"kind":"shape","id":"sh/5orepgjy","slide":11,"name":"ingest-node-4","bbox":[988,236,84,84]}
+{"kind":"textbox","id":"sh/knidgbid","slide":11,"name":"ingest-num-4","text":"5","textPreview":"5","textChars":1,"textLines":1,"bbox":[988,249,84,44]}
+{"kind":"textbox","id":"sh/jm9wn61s","slide":11,"name":"ingest-title-4","text":"就绪","textPreview":"就绪","textChars":2,"textLines":1,"bbox":[956,340,148,34]}
+{"kind":"textbox","id":"sh/il0ve1k7","slide":11,"name":"ingest-body-4","text":"记录页数、耗时\nchunk 数与引擎","textPreview":"记录页数、耗时 | chunk 数与引擎","textChars":18,"textLines":2,"bbox":[946,386,168,70]}
+{"kind":"shape","id":"sh/fepszipw","slide":11,"name":"ingest-rule","bbox":[52,500,1176,0]}
+{"kind":"textbox","id":"sh/wjidcb21","slide":11,"name":"ingest-dedup-title","text":"去重","textPreview":"去重","textChars":2,"textLines":1,"bbox":[68,534,120,32]}
+{"kind":"textbox","id":"sh/mdcj6dcn","slide":11,"name":"ingest-dedup-body","text":"SHA‑256 复用已就绪文件","textPreview":"SHA‑256 复用已就绪文件","textChars":15,"textLines":1,"bbox":[68,568,290,34]}
+{"kind":"textbox","id":"sh/ne5kzid8","slide":11,"name":"ingest-state-title","text":"状态","textPreview":"状态","textChars":2,"textLines":1,"bbox":[428,534,120,32]}
+{"kind":"textbox","id":"sh/ofe18nut","slide":11,"name":"ingest-state-body","text":"uploaded → parsing → indexing → ready / failed","textPreview":"uploaded → parsing → indexing → ready / failed","textChars":46,"textLines":1,"bbox":[428,568,420,34]}
+{"kind":"textbox","id":"sh/9gn21sve","slide":11,"name":"ingest-comp-title","text":"补偿","textPreview":"补偿","textChars":2,"textLines":1,"bbox":[920,534,120,32]}
+{"kind":"textbox","id":"sh/epcj2twr","slide":11,"name":"ingest-comp-body","text":"失败按 file_id 清理孤儿向量","textPreview":"失败按 file_id 清理孤儿向量","textChars":18,"textLines":1,"bbox":[920,568,270,34]}
+{"kind":"notes","id":"nt/e0rupt","slide":11,"text":""}
+{"kind":"slide","id":"sl/venulz","slide":12,"title":"04 · RAG 入库链路","textShapes":24}
+{"kind":"textbox","id":"sh/kvmps7y5","slide":12,"name":"kicker-5","text":"04 · RAG 入库链路","textPreview":"04 · RAG 入库链路","textChars":13,"textLines":1,"bbox":[52,30,500,26]}
+{"kind":"textbox","id":"sh/judozmxk","slide":12,"name":"title-5","text":"入库状态机让文档处理可观察、可恢复","textPreview":"入库状态机让文档处理可观察、可恢复","textChars":17,"textLines":1,"bbox":[52,62,1160,74]}
+{"kind":"textbox","id":"sh/itk7qhgz","slide":12,"name":"footer-5","text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1180,672,48,20]}
+{"kind":"shape","id":"sh/8fqd8jy9","slide":12,"name":"ingest-arrow-0","bbox":[234,278,82,0]}
+{"kind":"shape","id":"sh/9gjehozu","slide":12,"name":"ingest-arrow-1","bbox":[458,278,82,0]}
+{"kind":"shape","id":"sh/1ovexs3q","slide":12,"name":"ingest-arrow-2","bbox":[682,278,82,0]}
+{"kind":"shape","id":"sh/0nmx4n25","slide":12,"name":"ingest-arrow-3","bbox":[906,278,82,0]}
+{"kind":"shape","id":"sh/94b6tsfi","slide":12,"name":"ingest-node-0","bbox":[92,236,84,84]}
+{"kind":"textbox","id":"sh/832pknyx","slide":12,"name":"ingest-num-0","text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[92,249,84,44]}
+{"kind":"textbox","id":"sh/ipwre183","slide":12,"name":"ingest-title-0","text":"校验","textPreview":"校验","textChars":2,"textLines":1,"bbox":[60,340,148,34]}
+{"kind":"textbox","id":"sh/3q5876p8","slide":12,"name":"ingest-body-0","text":"扩展名 / MIME\n文件签名 / ZIP 安全","textPreview":"扩展名 / MIME | 文件签名 / ZIP 安全","textChars":24,"textLines":2,"bbox":[50,386,168,70]}
+{"kind":"shape","id":"sh/4re9grqt","slide":12,"name":"ingest-node-1","bbox":[316,236,84,84]}
+{"kind":"textbox","id":"sh/5sna9w7e","slide":12,"name":"ingest-num-1","text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[316,249,84,44]}
+{"kind":"textbox","id":"sh/qdgri18z","slide":12,"name":"ingest-title-1","text":"解析","textPreview":"解析","textChars":2,"textLines":1,"bbox":[284,340,148,34]}
+{"kind":"textbox","id":"sh/repsb6pk","slide":12,"name":"ingest-body-1","text":"PyMuPDF\nOCR 或视觉引擎","textPreview":"PyMuPDF | OCR 或视觉引擎","textChars":17,"textLines":2,"bbox":[274,386,168,70]}
+{"kind":"shape","id":"sh/sfy9kbq5","slide":12,"name":"ingest-node-2","bbox":[540,236,84,84]}
+{"kind":"textbox","id":"sh/dg7adg7q","slide":12,"name":"ingest-num-2","text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[540,249,84,44]}
+{"kind":"textbox","id":"sh/ehgrml8b","slide":12,"name":"ingest-title-2","text":"切片","textPreview":"切片","textChars":2,"textLines":1,"bbox":[508,340,148,34]}
+{"kind":"textbox","id":"sh/fipsfqpg","slide":12,"name":"ingest-body-2","text":"章节优先\n500 字 + 50 重叠","textPreview":"章节优先 | 500 字 + 50 重叠","textChars":18,"textLines":2,"bbox":[498,386,168,70]}
+{"kind":"shape","id":"sh/bm983q5o","slide":12,"name":"ingest-node-3","bbox":[764,236,84,84]}
+{"kind":"textbox","id":"sh/al0ral43","slide":12,"name":"ingest-num-3","text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[764,249,84,44]}
+{"kind":"textbox","id":"sh/xorq50nu","slide":12,"name":"ingest-title-3","text":"索引","textPreview":"索引","textChars":2,"textLines":1,"bbox":[732,340,148,34]}
+{"kind":"textbox","id":"sh/cni9cvm9","slide":12,"name":"ingest-body-3","text":"BGE embedding\n写入 Chroma","textPreview":"BGE embedding | 写入 Chroma","textChars":23,"textLines":2,"bbox":[722,386,168,70]}
+{"kind":"shape","id":"sh/nip8z65s","slide":12,"name":"ingest-node-4","bbox":[988,236,84,84]}
+{"kind":"textbox","id":"sh/2hg76147","slide":12,"name":"ingest-num-4","text":"5","textPreview":"5","textChars":1,"textLines":1,"bbox":[988,249,84,44]}
+{"kind":"textbox","id":"sh/pkrq1gni","slide":12,"name":"ingest-title-4","text":"就绪","textPreview":"就绪","textChars":2,"textLines":1,"bbox":[956,340,148,34]}
+{"kind":"textbox","id":"sh/ojyp8bmd","slide":12,"name":"ingest-body-4","text":"记录页数、耗时\nchunk 数与引擎","textPreview":"记录页数、耗时 | chunk 数与引擎","textChars":18,"textLines":2,"bbox":[946,386,168,70]}
+{"kind":"shape","id":"sh/po3ilwve","slide":12,"name":"ingest-rule","bbox":[52,500,1176,0]}
+{"kind":"textbox","id":"sh/etg7214v","slide":12,"name":"ingest-dedup-title","text":"去重","textPreview":"去重","textChars":2,"textLines":1,"bbox":[68,534,120,32]}
+{"kind":"textbox","id":"sh/4naxg3yh","slide":12,"name":"ingest-dedup-body","text":"SHA‑256 复用已就绪文件","textPreview":"SHA‑256 复用已就绪文件","textChars":15,"textLines":1,"bbox":[68,568,290,34]}
+{"kind":"textbox","id":"sh/5o3ep8z2","slide":12,"name":"ingest-state-title","text":"状态","textPreview":"状态","textChars":2,"textLines":1,"bbox":[428,534,120,32]}
+{"kind":"textbox","id":"sh/ilsfetgr","slide":12,"name":"ingest-state-body","text":"uploaded → parsing → indexing → ready / failed","textPreview":"uploaded → parsing → indexing → ready / failed","textChars":46,"textLines":1,"bbox":[428,568,420,34]}
+{"kind":"textbox","id":"sh/jm1wnyhw","slide":12,"name":"ingest-comp-title","text":"补偿","textPreview":"补偿","textChars":2,"textLines":1,"bbox":[920,534,120,32]}
+{"kind":"textbox","id":"sh/sbuxknyt","slide":12,"name":"ingest-comp-body","text":"失败按 file_id 清理孤儿向量","textPreview":"失败按 file_id 清理孤儿向量","textChars":18,"textLines":1,"bbox":[920,568,270,34]}
+{"kind":"notes","id":"nt/venulz","slide":12,"text":""}
+{"kind":"slide","id":"sl/lc53sc","slide":13,"title":"07 · 桌面交付","textShapes":13}
+{"kind":"textbox","id":"sh/veh03yp8","slide":13,"name":"kicker-8","text":"07 · 桌面交付","textPreview":"07 · 桌面交付","textChars":9,"textLines":1,"bbox":[52,30,500,26]}
+{"kind":"textbox","id":"sh/wfqhwj6t","slide":13,"name":"title-8","text":"Electron 将项目封装为无需预装环境的 Windows 应用","textPreview":"Electron 将项目封装为无需预装环境的 Windows 应用","textChars":33,"textLines":1,"bbox":[52,62,1160,74]}
+{"kind":"textbox","id":"sh/xgzi5o7e","slide":13,"name":"footer-8","text":"08","textPreview":"08","textChars":2,"textLines":1,"bbox":[1180,672,48,20]}
+{"kind":"shape","id":"sh/y5w3utwr","slide":13,"name":"desktop-line","bbox":[72,560,1120,0]}
+{"kind":"shape","id":"sh/ji107yp4","slide":13,"name":"desktop-card-0","bbox":[64,180,340,330]}
+{"kind":"textbox","id":"sh/kja1036p","slide":13,"name":"desktop-title-0","text":"构建私有运行时","textPreview":"构建私有运行时","textChars":7,"textLines":1,"bbox":[92,218,284,42]}
+{"kind":"textbox","id":"sh/54ji987a","slide":13,"name":"desktop-body-0","text":"下载嵌入式 Python，安装后端依赖与基础 BGE 模型，离线导入验证后生成 runtime tar。","textPreview":"下载嵌入式 Python，安装后端依赖与基础 BGE 模型，离线导入验证后生成 runtime tar。","textChars":52,"textLines":1,"bbox":[92,290,284,142]}
+{"kind":"shape","id":"sh/ylozm9of","slide":13,"name":"desktop-dot-0","bbox":[60,552,16,16]}
+{"kind":"textbox","id":"sh/zmx0vep0","slide":13,"name":"desktop-label-0","text":"构建阶段","textPreview":"构建阶段","textChars":4,"textLines":1,"bbox":[64,586,200,34]}
+{"kind":"shape","id":"sh/3epkfytg","slide":13,"name":"desktop-card-1","bbox":[454,180,340,330]}
+{"kind":"textbox","id":"sh/idg3mtcv","slide":13,"name":"desktop-title-1","text":"首次启动释放资源","textPreview":"首次启动释放资源","textChars":8,"textLines":1,"bbox":[482,218,284,42]}
+{"kind":"textbox","id":"sh/50r2h8b6","slide":13,"name":"desktop-body-1","text":"比较 runtime manifest，将 Python、模型与数据目录释放到用户数据目录。","textPreview":"比较 runtime manifest，将 Python、模型与数据目录释放到用户数据目录。","textChars":46,"textLines":1,"bbox":[482,290,284,142]}
+{"kind":"shape","id":"sh/4fylo3u1","slide":13,"name":"desktop-dot-1","bbox":[450,552,16,16]}
+{"kind":"textbox","id":"sh/vapkbyd4","slide":13,"name":"desktop-label-1","text":"首次启动","textPreview":"首次启动","textChars":4,"textLines":1,"bbox":[454,586,200,34]}
+{"kind":"shape","id":"sh/u9gjitcj","slide":13,"name":"desktop-card-2","bbox":[844,180,340,330]}
+{"kind":"textbox","id":"sh/hc72dova","slide":13,"name":"desktop-title-2","text":"日常启动与回收","textPreview":"日常启动与回收","textChars":7,"textLines":1,"bbox":[872,218,284,42]}
+{"kind":"textbox","id":"sh/gbylk3up","slide":13,"name":"desktop-body-2","text":"单实例锁 → splash → 启动 FastAPI → 轮询 /api/health → 加载前端；退出时终止后端进程树。","textPreview":"单实例锁 → splash → 启动 FastAPI → 轮询 /api/health → 加载前端；退出时终止后端进程树。","textChars":62,"textLines":1,"bbox":[872,290,284,142]}
+{"kind":"shape","id":"sh/765k7ed8","slide":13,"name":"desktop-dot-2","bbox":[840,552,16,16]}
+{"kind":"textbox","id":"sh/65wje9cn","slide":13,"name":"desktop-label-2","text":"每次启动","textPreview":"每次启动","textChars":4,"textLines":1,"bbox":[844,586,200,34]}
+{"kind":"textbox","id":"sh/ahw3q9wf","slide":13,"name":"desktop-note","text":"交付形态：electron-builder + NSIS x64，一键安装、创建桌面/开始菜单快捷方式，卸载默认保留用户知识库。","textPreview":"交付形态：electron-builder + NSIS x64，一键安装、创建桌面/开始菜单快捷方式，卸载默认保留用户知识库。","textChars":64,"textLines":1,"bbox":[52,640,1120,30]}
+{"kind":"notes","id":"nt/lc53sc","slide":13,"text":""}
+{"kind":"slide","id":"sl/u8juzf","slide":14,"title":"总结与下一步","textShapes":9}
+{"kind":"textbox","id":"sh/ul0jy1gr","slide":14,"name":"close-kicker","text":"总结与下一步","textPreview":"总结与下一步","textChars":6,"textLines":1,"bbox":[52,40,320,32]}
+{"kind":"textbox","id":"sh/h8ri9wf2","slide":14,"name":"close-main","text":"我完成的不是一个聊天页面，\n而是一条从资料到可信答案的完整链路","textPreview":"我完成的不是一个聊天页面， | 而是一条从资料到可信答案的完整链路","textChars":31,"textLines":2,"bbox":[52,150,1120,180]}
+{"kind":"shape","id":"sh/gni10byh","slide":14,"name":"close-accent","bbox":[52,384,12,210]}
+{"kind":"textbox","id":"sh/3a90b6x8","slide":14,"name":"close-achievement","text":"已完成","textPreview":"已完成","textChars":3,"textLines":1,"bbox":[92,390,180,34]}
+{"kind":"textbox","id":"sh/290j21gn","slide":14,"name":"close-achievement-body","text":"多格式入库 → 混合检索 → 引用问答 → 本地资料管理 → Windows 桌面交付","textPreview":"多格式入库 → 混合检索 → 引用问答 → 本地资料管理 → Windows 桌面交付","textChars":43,"textLines":1,"bbox":[92,432,950,40]}
+{"kind":"textbox","id":"sh/pcb2dgfe","slide":14,"name":"close-boundary","text":"当前边界","textPreview":"当前边界","textChars":4,"textLines":1,"bbox":[92,490,180,34]}
+{"kind":"textbox","id":"sh/4b214byt","slide":14,"name":"close-boundary-body","text":"本机密钥仍是明文、OJ 证书策略需收紧、前端包体较大、自动化测试覆盖不足","textPreview":"本机密钥仍是明文、OJ 证书策略需收紧、前端包体较大、自动化测试覆盖不足","textChars":36,"textLines":1,"bbox":[92,532,950,40]}
+{"kind":"textbox","id":"sh/retkfqx4","slide":14,"name":"close-next","text":"下一步","textPreview":"下一步","textChars":3,"textLines":1,"bbox":[92,590,180,34]}
+{"kind":"textbox","id":"sh/qdkj6lgj","slide":14,"name":"close-next-body","text":"凭据加密 + API_BASE 统一配置 + 代码拆包 + 单元/接口/E2E 测试 + 安装包签名","textPreview":"凭据加密 + API_BASE 统一配置 + 代码拆包 + 单元/接口/E2E 测试 + 安装包签名","textChars":50,"textLines":1,"bbox":[92,632,980,40]}
+{"kind":"textbox","id":"sh/sbuls729","slide":14,"name":"close-qa","text":"Q&A","textPreview":"Q&A","textChars":3,"textLines":1,"bbox":[1100,616,128,46]}
+{"kind":"notes","id":"nt/u8juzf","slide":14,"text":""}

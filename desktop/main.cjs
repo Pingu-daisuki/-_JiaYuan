@@ -1,10 +1,18 @@
-const { app, BrowserWindow, dialog, shell } = require('electron')
+const { app, BrowserWindow, dialog, shell, ipcMain } = require('electron')
 const { spawn, spawnSync } = require('node:child_process')
 const fs = require('node:fs')
 const http = require('node:http')
 const path = require('node:path')
+const {
+  backendTerminationPlan,
+  backendUrl,
+  frontendLoadOptions,
+  isTrustedNavigation,
+  withApiBase,
+} = require('./runtime-utils.cjs')
 
 const BACKEND_PORT = 8765
+const BACKEND_URL = backendUrl(BACKEND_PORT)
 const HEALTH_URL = `http://127.0.0.1:${BACKEND_PORT}/api/health`
 const isDevelopment = !app.isPackaged
 let mainWindow = null
@@ -49,6 +57,7 @@ function createWindow() {
     backgroundColor: '#07101f',
     title: 'JiaYuan',
     webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -56,28 +65,40 @@ function createWindow() {
     },
   })
   mainWindow.removeMenu()
-  mainWindow.webContents.session.webRequest.onBeforeRequest(
-    { urls: ['http://127.0.0.1:8000/*'] },
-    (details, callback) => callback({
-      redirectURL: details.url.replace('http://127.0.0.1:8000', `http://127.0.0.1:${BACKEND_PORT}`),
-    }),
-  )
   mainWindow.once('ready-to-show', () => mainWindow?.show())
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//i.test(url)) {
-      const target = url.replace('http://127.0.0.1:8000', `http://127.0.0.1:${BACKEND_PORT}`)
-      shell.openExternal(target)
+      shell.openExternal(url)
     }
     return { action: 'deny' }
   })
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (!url.startsWith('file://') && !url.startsWith('http://127.0.0.1:5173')) {
+    if (!isTrustedNavigation(url, process.env.JIAYUAN_DEV_SERVER_URL)) {
       event.preventDefault()
       if (/^https?:\/\//i.test(url)) shell.openExternal(url)
     }
   })
   return mainWindow
 }
+
+ipcMain.handle('jiayuan:export-pdf', async (_event, payload = {}) => {
+  const title = String(payload.title || 'JiaYuan 对话').replace(/[\\/:*?"<>|]/g, '_').slice(0, 100)
+  const target = await dialog.showSaveDialog(mainWindow, {
+    title: '导出对话为 PDF',
+    defaultPath: `${title}.pdf`,
+    filters: [{ name: 'PDF', extensions: ['pdf'] }],
+  })
+  if (target.canceled || !target.filePath) return { canceled: true }
+  const printWindow = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } })
+  try {
+    await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(String(payload.html || ''))}`)
+    const pdf = await printWindow.webContents.printToPDF({ printBackground: true, pageSize: 'A4', margins: { top: 0.5, bottom: 0.5, left: 0.55, right: 0.55 } })
+    fs.writeFileSync(target.filePath, pdf)
+    return { canceled: false, path: target.filePath }
+  } finally {
+    printWindow.destroy()
+  }
+})
 
 
 async function showSplash(status) {
@@ -236,6 +257,8 @@ function startBackend(pythonExecutable) {
       JIAYUAN_PORT: String(BACKEND_PORT),
       HF_HOME: path.join(modelDir, 'huggingface'),
       RAG_EMBEDDING_LOCAL_FILES_ONLY: '1',
+      HF_HUB_OFFLINE: '1',
+      TRANSFORMERS_OFFLINE: '1',
       PYTHONUTF8: '1',
       PYTHONIOENCODING: 'utf-8',
       PYTHONDONTWRITEBYTECODE: '1',
@@ -251,8 +274,9 @@ function startBackend(pythonExecutable) {
 
 function stopBackend() {
   if (!backendOwnedByApp || !backendProcess || backendProcess.exitCode !== null) return
-  if (process.platform === 'win32') {
-    spawnSync('taskkill', ['/PID', String(backendProcess.pid), '/T', '/F'], {
+  const plan = backendTerminationPlan(process.platform, backendProcess.pid)
+  if (plan.command) {
+    spawnSync(plan.command, plan.args, {
       windowsHide: true,
       stdio: 'ignore',
     })
@@ -275,19 +299,19 @@ async function launch() {
     const pythonExecutable = preparePrivatePython()
     await updateSplash('首次启动：正在准备基础向量模型…')
     prepareSeedModels()
-    await updateSplash('正在启动本地后端并加载向量模型…')
+    await updateSplash('正在启动本地后端…')
     startBackend(pythonExecutable)
   }
   await waitForBackend()
   desktopLog('launch: backend ready')
 
   if (isDevelopment && process.env.JIAYUAN_DEV_SERVER_URL) {
-    await mainWindow.loadURL(process.env.JIAYUAN_DEV_SERVER_URL)
+    await mainWindow.loadURL(withApiBase(process.env.JIAYUAN_DEV_SERVER_URL, BACKEND_URL))
   } else {
     const frontendPath = isDevelopment
       ? path.resolve(__dirname, '..', 'frontend', 'dist', 'index.html')
       : path.join(process.resourcesPath, 'frontend', 'index.html')
-    await mainWindow.loadFile(frontendPath)
+    await mainWindow.loadFile(frontendPath, frontendLoadOptions(BACKEND_URL))
   }
 }
 

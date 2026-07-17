@@ -125,6 +125,49 @@ def init_db():
                 `is_submitted` BOOLEAN,
                 `url` TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS `conversations` (
+                `id` TEXT PRIMARY KEY,
+                `title` TEXT NOT NULL,
+                `course_id` INTEGER DEFAULT NULL,
+                `retrieval_scope_json` TEXT NOT NULL DEFAULT '{"mode":"all"}',
+                `pinned` INTEGER NOT NULL DEFAULT 0,
+                `created_at` TEXT DEFAULT (datetime('now', 'localtime')),
+                `updated_at` TEXT DEFAULT (datetime('now', 'localtime')),
+                FOREIGN KEY (`course_id`) REFERENCES `courses`(`id`) ON DELETE SET NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS `conversation_messages` (
+                `id` TEXT PRIMARY KEY,
+                `conversation_id` TEXT NOT NULL,
+                `role` TEXT NOT NULL CHECK (`role` IN ('user', 'assistant')),
+                `content` TEXT NOT NULL DEFAULT '',
+                `sources_json` TEXT NOT NULL DEFAULT '[]',
+                `pinned` INTEGER NOT NULL DEFAULT 0,
+                `created_at` TEXT DEFAULT (datetime('now', 'localtime')),
+                FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS `review_items` (
+                `id` TEXT PRIMARY KEY,
+                `title` TEXT NOT NULL,
+                `course_id` INTEGER DEFAULT NULL,
+                `file_id` INTEGER DEFAULT NULL,
+                `due_at` TEXT NOT NULL,
+                `status` TEXT NOT NULL DEFAULT 'pending',
+                `created_at` TEXT DEFAULT (datetime('now', 'localtime')),
+                FOREIGN KEY (`course_id`) REFERENCES `courses`(`id`) ON DELETE SET NULL,
+                FOREIGN KEY (`file_id`) REFERENCES `knowledge_files`(`id`) ON DELETE SET NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS `recent_activity` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+                `item_type` TEXT NOT NULL,
+                `item_id` TEXT NOT NULL,
+                `title` TEXT NOT NULL,
+                `course_id` INTEGER DEFAULT NULL,
+                `accessed_at` TEXT DEFAULT (datetime('now', 'localtime'))
+            );
         """)
 
         _ensure_column(conn, "courses", "parent_id", "INTEGER DEFAULT NULL")
@@ -185,6 +228,18 @@ def init_db():
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_knowledge_files_source_url "
             "ON knowledge_files(source_url)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_conversations_updated "
+            "ON conversations(pinned DESC, updated_at DESC)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_conversation_messages_conversation "
+            "ON conversation_messages(conversation_id, created_at)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_recent_activity_accessed "
+            "ON recent_activity(accessed_at DESC)"
         )
         conn.commit()
     finally:

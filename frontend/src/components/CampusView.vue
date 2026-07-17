@@ -116,17 +116,19 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, nextTick } from 'vue'
+import { ref, reactive, onMounted, onActivated, nextTick } from 'vue'
 import { Setting, Plus, Delete, User } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { campusAccounts as savedAccounts, refreshCampusAccounts } from '../store/useCampusAccounts'
+import { apiEventSource, apiFetch, apiJson } from '../api/client'
 
 // --- 状态控制 ---
-const savedAccounts = ref([])
 const isRunning = ref(false)
 const currentRunningUser = ref('')
 const logs = ref([])
 const terminalBodyRef = ref(null)
 let eventSource = null
+let activeTaskId = null
 
 // --- 弹窗与表单状态 ---
 const accountDialogVisible = ref(false)
@@ -145,8 +147,11 @@ const removeTimeSlot = (index) => strategyForm.time_slots.splice(index, 1)
 
 // --- 数据获取 ---
 const fetchAccounts = async () => {
-  const res = await fetch('http://127.0.0.1:8000/api/campus/accounts')
-  if (res.ok) savedAccounts.value = await res.json()
+  try {
+    await refreshCampusAccounts()
+  } catch (error) {
+    ElMessage.error(error.message || '身份资料同步失败')
+  }
 }
 
 // --- 操作：身份登记 ---
@@ -160,7 +165,7 @@ const submitAccount = async () => {
   if (!accountForm.student_id || !accountForm.password) return ElMessage.warning('密码或账号不能为空！')
   isSavingAccount.value = true
   try {
-    const res = await fetch('http://127.0.0.1:8000/api/campus/account', {
+    const res = await apiFetch('/api/campus/account', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(accountForm)
@@ -169,11 +174,11 @@ const submitAccount = async () => {
     if (res.ok) {
       ElMessage.success(data.message)
       accountDialogVisible.value = false
-      fetchAccounts()
+      await fetchAccounts()
     } else {
       ElMessage.error(data.detail)
     }
-  } catch (err) {
+  } catch {
     ElMessage.error('网络通讯失败')
   } finally {
     isSavingAccount.value = false
@@ -191,7 +196,7 @@ const openStrategyDialog = (account) => {
   
   try {
     strategyForm.time_slots = typeof account.time_slots === 'string' ? JSON.parse(account.time_slots) : []
-  } catch(e) { strategyForm.time_slots = [] }
+  } catch { strategyForm.time_slots = [] }
   
   strategyDialogVisible.value = true
 }
@@ -199,7 +204,7 @@ const openStrategyDialog = (account) => {
 const submitStrategy = async () => {
   isSavingStrategy.value = true
   try {
-    const res = await fetch(`http://127.0.0.1:8000/api/campus/strategy/${currentStrategyId.value}`, {
+    const res = await apiFetch(`/api/campus/strategy/${encodeURIComponent(currentStrategyId.value)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(strategyForm)
@@ -207,9 +212,9 @@ const submitStrategy = async () => {
     if (res.ok) {
       ElMessage.success('策略已成功更新！')
       strategyDialogVisible.value = false
-      fetchAccounts() // 刷新列表以显示最新阈值
+      await fetchAccounts() // 刷新列表以显示最新阈值
     }
-  } catch (err) {
+  } catch {
     ElMessage.error('网络通讯失败')
   } finally {
     isSavingStrategy.value = false
@@ -219,12 +224,12 @@ const submitStrategy = async () => {
 // --- 操作：删除账号 ---
 const deleteAccount = async (studentId) => {
   try {
-    const res = await fetch(`http://127.0.0.1:8000/api/campus/account/${studentId}`, { method: 'DELETE' })
+    const res = await apiFetch(`/api/campus/account/${encodeURIComponent(studentId)}`, { method: 'DELETE' })
     if (res.ok) {
       ElMessage.success('账号已成功删除')
-      fetchAccounts()
+      await fetchAccounts()
     }
-  } catch (err) {
+  } catch {
     ElMessage.error('删除失败')
   }
 }
@@ -240,12 +245,23 @@ const openLaunchSelect = (account) => {
   ).then(() => startEngine(account)).catch(() => {})
 }
 
-const startEngine = (account) => {
+const startEngine = async (account) => {
   isRunning.value = true
   currentRunningUser.value = account.real_name
   logs.value = [`[系统] 🛰️ 正在为 ${account.real_name} 建立独占流式传输管线...`]
   
-  eventSource = new EventSource(`http://127.0.0.1:8000/api/campus/stream_sign/${account.student_id}`)
+  try {
+    const task = await apiJson(`/api/campus/rollcall/tasks/${encodeURIComponent(account.student_id)}`, {
+      method: 'POST',
+    })
+    activeTaskId = task.task_id
+  } catch (error) {
+    isRunning.value = false
+    currentRunningUser.value = ''
+    ElMessage.error(error.message || '无法创建监控任务')
+    return
+  }
+  eventSource = apiEventSource(`/api/campus/stream_sign/${encodeURIComponent(account.student_id)}?task_id=${activeTaskId}`)
   
   eventSource.onmessage = (event) => {
     logs.value.push(event.data)
@@ -261,7 +277,17 @@ const startEngine = (account) => {
 }
 
 const stopEngine = () => {
-  if (eventSource) eventSource.close()
+  const source = eventSource
+  eventSource = null
+  const taskId = activeTaskId
+  if (taskId) {
+    void apiFetch(`/api/tasks/${taskId}/cancel`, { method: 'POST' })
+      .catch(() => {})
+      .finally(() => source?.close())
+  } else {
+    source?.close()
+  }
+  activeTaskId = null
   isRunning.value = false
   currentRunningUser.value = ''
   logs.value.push('[系统] 🛑 强制拦截，引擎停止工作。')
@@ -277,6 +303,7 @@ const getLogColorClass = (logText) => {
 }
 
 onMounted(() => { fetchAccounts() })
+onActivated(() => { fetchAccounts() })
 </script>
 
 <style scoped>

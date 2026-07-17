@@ -3,8 +3,8 @@
     <!-- 左侧栏：账号管理 -->
     <div class="left-sidebar">
       <div class="sidebar-title">
-        <el-icon><Calendar /></el-icon>
-        <span>智能 DDL 监控</span>
+        <h2><el-icon><Calendar /></el-icon></h2>
+        <p class="subtitle">为您分虑 愿您无忧</p>
       </div>
       <div class="account-section-title">已认证账号</div>
       
@@ -81,35 +81,30 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
-import axios from 'axios';
+import { ref, onMounted, onActivated } from 'vue';
 import { Calendar } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
-
-// 🎯 核心修复：显式指定后端 API 地址，绕过前端代理配置问题
-const API_BASE = 'http://127.0.0.1:8000';
+import { campusAccounts as accounts, refreshCampusAccounts } from '../store/useCampusAccounts';
+import { apiJson } from '../api/client';
 
 const currentView = ref('assignments');
 const selectedAccount = ref(null);
 const loading = ref(false);
 
-const accounts = ref([]);
 const deadlines = ref([]);
 
 // 1. 初始化时从已有的 campus 路由读取账号
 const fetchAccounts = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/api/campus/accounts`);
-    // 严格校验必须是数组，否则清空
-    if (Array.isArray(res.data)) {
-      accounts.value = res.data;
-    } else {
-      accounts.value = [];
-      ElMessage.warning('后端返回的数据格式异常，不是标准数组');
+    const refreshedAccounts = await refreshCampusAccounts();
+    if (selectedAccount.value) {
+      selectedAccount.value = refreshedAccounts.find(
+        account => account.student_id === selectedAccount.value.student_id
+      ) || null;
+      if (!selectedAccount.value) deadlines.value = [];
     }
   } catch (error) {
-    accounts.value = [];
-    ElMessage.error('获取账号列表失败，请检查 FastAPI 后端是否运行在 8000 端口');
+    ElMessage.error(error.message || '获取账号列表失败');
   }
 };
 
@@ -118,9 +113,9 @@ const selectAccount = async (acc) => {
   selectedAccount.value = acc;
   loading.value = true;
   try {
-    const res = await axios.get(`${API_BASE}/api/deadlines/${acc.student_id}?sync=false`);
-    deadlines.value = res.data.data || [];
-  } catch (error) {
+    const data = await apiJson(`/api/deadlines/${encodeURIComponent(acc.student_id)}?sync=false`);
+    deadlines.value = data.data || [];
+  } catch {
     ElMessage.error('获取本地 Deadline 失败');
     deadlines.value = [];
   } finally {
@@ -133,11 +128,11 @@ const syncData = async () => {
   if (!selectedAccount.value) return;
   loading.value = true;
   try {
-    const res = await axios.get(`${API_BASE}/api/deadlines/${selectedAccount.value.student_id}?sync=true`);
-    deadlines.value = res.data.data || [];
+    const data = await apiJson(`/api/deadlines/${encodeURIComponent(selectedAccount.value.student_id)}?sync=true`, { timeoutMs: 90000 });
+    deadlines.value = data.data || [];
     ElMessage.success('同步畅课数据成功！');
   } catch (error) {
-    ElMessage.error('同步失败: ' + (error.response?.data?.detail || error.message));
+    ElMessage.error('同步失败: ' + error.message);
   } finally {
     loading.value = false;
   }
@@ -184,6 +179,9 @@ const getStatusClass = (dateStr) => {
 onMounted(() => {
   fetchAccounts();
 });
+onActivated(() => {
+  fetchAccounts();
+});
 </script>
 
 <style scoped>
@@ -209,9 +207,12 @@ onMounted(() => {
   color: #303133;
   border-bottom: 1px solid #ebeef5;
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
 }
+.sidebar-title h2 { margin: 0; line-height: 1; }
+.sidebar-title .subtitle { margin: 0; color: #909399; font-size: 13px; font-weight: 400; line-height: 1.4; white-space: nowrap; }
 .account-section-title {
   padding: 15px 20px 5px;
   font-size: 13px;

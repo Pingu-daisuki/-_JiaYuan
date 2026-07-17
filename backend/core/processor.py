@@ -14,8 +14,6 @@ import threading
 import time
 from datetime import datetime
 from collections import Counter
-from chromadb.utils import embedding_functions
-import chromadb
 from core.db import get_db_connection, update_file_ingestion
 from core.document_parser import (
     document_type_from_filename,
@@ -48,6 +46,8 @@ ENGINE_TIMEOUT_SECONDS = {
     "mineru": 900,
 }
 ENGINE_HEARTBEAT_SECONDS = 5
+ENGINE_EXIT_GRACE_SECONDS = 10
+MIN_NATIVE_TEXT_CHARS = 20
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
 RETRIEVAL_CANDIDATE_COUNT = 10
@@ -83,22 +83,40 @@ DOCUMENT_TYPE_LABELS = {
     "html": "HTML",
 }
 
-chroma_client = chromadb.PersistentClient(path=CHROMA_DATA_DIR)
 VECTOR_WRITE_LOCK = threading.Lock()
+VECTOR_INIT_LOCK = threading.Lock()
 RERANKER_LOCK = threading.Lock()
+_VECTOR_COLLECTION = None
 _RERANKER_MODEL = None
 _RERANKER_LOAD_ATTEMPTED = False
 _RERANKER_LOAD_ERROR = None
 
-embedding_options = {"local_files_only": True} if EMBEDDING_LOCAL_FILES_ONLY else {}
-bge_embeddings = embedding_functions.SentenceTransformerEmbeddingFunction(
-    model_name=EMBEDDING_MODEL_NAME,
-    **embedding_options,
-)
-collection = chroma_client.get_or_create_collection(
-    name="xmu_course_materials_v2",
-    embedding_function=bge_embeddings
-)
+def get_vector_collection():
+    """首次真正入库/检索时才加载 Chroma 和向量模型。"""
+    global _VECTOR_COLLECTION
+    if _VECTOR_COLLECTION is not None:
+        return _VECTOR_COLLECTION
+
+    with VECTOR_INIT_LOCK:
+        if _VECTOR_COLLECTION is not None:
+            return _VECTOR_COLLECTION
+
+        # chromadb -> onnxruntime -> sentence-transformers 是桌面冷启动中最重的
+        # 导入链。放在这里后，校园身份等轻量功能无需等待向量运行时。
+        import chromadb
+        from chromadb.utils import embedding_functions
+
+        embedding_options = {"local_files_only": True} if EMBEDDING_LOCAL_FILES_ONLY else {}
+        embeddings = embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name=EMBEDDING_MODEL_NAME,
+            **embedding_options,
+        )
+        client = chromadb.PersistentClient(path=CHROMA_DATA_DIR)
+        _VECTOR_COLLECTION = client.get_or_create_collection(
+            name="xmu_course_materials_v2",
+            embedding_function=embeddings,
+        )
+        return _VECTOR_COLLECTION
 
 
 def _page_record(page: int, text: str) -> dict:
@@ -150,23 +168,35 @@ def _ocr_page_with_tesseract(page, image_path: str, tesseract_path: str) -> str:
     )
     pixmap.save(image_path)
 
-    cmd = [tesseract_path, image_path, "stdout", "-l", OCR_LANGUAGE, "--psm", "3"]
-    if os.path.isdir(TESSDATA_DIR):
-        cmd.extend(["--tessdata-dir", TESSDATA_DIR])
+    last_error = "未知错误"
+    # 自动版面分析偶尔会在单图/稀疏文字页失败；改用统一文本块模式重试，
+    # 避免一张特殊页面拖垮整个文档。
+    for page_segmentation_mode in (3, 6):
+        cmd = [
+            tesseract_path, image_path, "stdout", "-l", OCR_LANGUAGE,
+            "--psm", str(page_segmentation_mode),
+        ]
+        if os.path.isdir(TESSDATA_DIR):
+            cmd.extend(["--tessdata-dir", TESSDATA_DIR])
 
-    result = subprocess.run(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=180,
-    )
-    if result.returncode != 0:
-        error_detail = result.stderr.strip()[-500:]
-        raise RuntimeError(f"Tesseract OCR 失败: {error_detail or '未知错误'}")
-    return result.stdout
+        try:
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=180,
+            )
+        except subprocess.TimeoutExpired:
+            last_error = f"PSM {page_segmentation_mode} 超过 180 秒"
+            continue
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout
+        last_error = result.stderr.strip()[-500:] or f"PSM {page_segmentation_mode} 未识别到文字"
+
+    raise RuntimeError(f"Tesseract OCR 失败: {last_error}")
 
 
 def extract_pages_with_pymupdf(pdf_path: str):
@@ -180,13 +210,21 @@ def extract_pages_with_pymupdf(pdf_path: str):
         with tempfile.TemporaryDirectory(prefix="jiayuan_ocr_") as temp_dir:
             tesseract_path = None
             for page_index, page in enumerate(doc):
-                page_text = page.get_text("text")
-                if not page_text or not page_text.strip():
+                native_text = page.get_text("text") or ""
+                page_text = native_text
+                if len(re.sub(r"\s+", "", native_text)) < MIN_NATIVE_TEXT_CHARS:
                     if tesseract_path is None:
                         tesseract_path = _find_tesseract()
                     image_path = os.path.join(temp_dir, f"page_{page_index + 1}.png")
-                    page_text = _ocr_page_with_tesseract(page, image_path, tesseract_path)
-                    ocr_page_count += 1
+                    try:
+                        page_text = _ocr_page_with_tesseract(page, image_path, tesseract_path)
+                        ocr_page_count += 1
+                    except RuntimeError:
+                        # 少量原生文字仍比丢弃整份文档更有价值；完全空白/装饰页则跳过。
+                        if native_text.strip():
+                            page_text = native_text
+                        else:
+                            page_text = ""
 
                 if page_text and page_text.strip():
                     page_texts.append(_page_record(page_index + 1, page_text))
@@ -417,7 +455,24 @@ def _external_output_segments(document_type: str, page_texts, markdown: str):
 def delete_vectors_for_file(file_id: int):
     """按 file_id 幂等删除全部向量，供失败补偿和文件删除共同使用。"""
     with VECTOR_WRITE_LOCK:
-        collection.delete(where={"file_id": file_id})
+        get_vector_collection().delete(where={"file_id": file_id})
+
+
+def update_vector_course_metadata(file_id: int, course_id: int):
+    """移动文件时同步所有向量片段的目录 ID。"""
+    with VECTOR_WRITE_LOCK:
+        collection = get_vector_collection()
+        stored = collection.get(where={"file_id": file_id}, include=["metadatas"])
+        ids = stored.get("ids") or []
+        if not ids:
+            return
+        metadatas = stored.get("metadatas") or []
+        updated_metadatas = []
+        for metadata in metadatas:
+            updated = dict(metadata or {})
+            updated["course_id"] = course_id
+            updated_metadatas.append(updated)
+        collection.update(ids=ids, metadatas=updated_metadatas)
 
 
 def _mark_ingestion_failed(
@@ -428,13 +483,15 @@ def _mark_ingestion_failed(
     page_count: int = 0,
     unit_type: str = "page",
     unit_count: int = 0,
+    cleanup_vectors: bool = True,
 ):
     """失败补偿：先清除可能已写入的向量，再持久化 failed 状态。"""
     cleanup_errors = []
-    try:
-        delete_vectors_for_file(file_id)
-    except Exception as exc:
-        cleanup_errors.append(f"向量补偿删除失败: {exc}")
+    if cleanup_vectors:
+        try:
+            delete_vectors_for_file(file_id)
+        except Exception as exc:
+            cleanup_errors.append(f"向量补偿删除失败: {exc}")
 
     message = str(error).strip() or type(error).__name__
     if cleanup_errors:
@@ -514,7 +571,7 @@ def backfill_ready_file_metrics():
     updated_file_ids = []
     for file_record in ready_files:
         try:
-            stored = collection.get(
+            stored = get_vector_collection().get(
                 where={"file_id": file_record["id"]},
                 include=["metadatas"],
             )
@@ -586,6 +643,14 @@ def _terminate_process_tree(process):
             process.kill()
         except OSError:
             pass
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+            process.wait(timeout=5)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
 
 
 def _extract_with_external_engine_stream(engine: str, pdf_path: str):
@@ -623,6 +688,7 @@ def _extract_with_external_engine_stream(engine: str, pdf_path: str):
         threading.Thread(target=pump_output, daemon=True).start()
         started_at = time.monotonic()
         last_heartbeat_at = started_at
+        output_closed_at = None
 
         while True:
             now = time.monotonic()
@@ -635,6 +701,14 @@ def _extract_with_external_engine_stream(engine: str, pdf_path: str):
                 line = output_queue.get(timeout=1)
             except queue.Empty:
                 now = time.monotonic()
+                if process.poll() is not None:
+                    break
+                if output_closed_at is not None and now - output_closed_at >= ENGINE_EXIT_GRACE_SECONDS:
+                    _terminate_process_tree(process)
+                    raise RuntimeError(
+                        f"{engine.upper()} 已关闭日志输出但未在 {ENGINE_EXIT_GRACE_SECONDS} 秒内退出，"
+                        "已回收残留进程。"
+                    )
                 if now - last_heartbeat_at >= ENGINE_HEARTBEAT_SECONDS:
                     elapsed = int(now - started_at)
                     yield f"[{engine.upper()}] 正在 GPU 解析，已运行 {elapsed} 秒…\n"
@@ -642,14 +716,21 @@ def _extract_with_external_engine_stream(engine: str, pdf_path: str):
                 continue
 
             if line is None:
-                break
+                if process.poll() is not None:
+                    break
+                output_closed_at = time.monotonic()
+                continue
             line = line.strip()
             if line:
                 recent_output.append(line)
                 recent_output = recent_output[-20:]
                 yield f"[{engine.upper()}] {line}\n"
 
-        return_code = process.wait()
+        try:
+            return_code = process.wait(timeout=ENGINE_EXIT_GRACE_SECONDS)
+        except subprocess.TimeoutExpired as exc:
+            _terminate_process_tree(process)
+            raise RuntimeError(f"{engine.upper()} 输出完成后未正常退出，已回收残留进程。") from exc
         if return_code != 0:
             detail = "\n".join(recent_output)[-1000:]
             raise RuntimeError(f"{engine.upper()} 进程失败（返回码 {return_code}）: {detail}")
@@ -664,6 +745,11 @@ def _extract_with_external_engine_stream(engine: str, pdf_path: str):
     finally:
         if process is not None and process.poll() is None:
             _terminate_process_tree(process)
+        if process is not None and process.stdout is not None:
+            try:
+                process.stdout.close()
+            except OSError:
+                pass
         shutil.rmtree(output_dir, ignore_errors=True)
 
 
@@ -710,6 +796,7 @@ def process_and_vectorize_document_stream(
     unit_type = "page" if document_type == "pdf" else "heading"
     unit_count = 0
     ingestion_ready = False
+    vector_write_started = False
     try:
         if requested_engine not in ENGINE_LABELS:
             raise ValueError(f"不支持的文档解析引擎: {requested_engine}")
@@ -836,6 +923,8 @@ def process_and_vectorize_document_stream(
             yield "[数据库] 🧹 正在替换本文件的旧向量索引...\n"
         with VECTOR_WRITE_LOCK:
             # 无论新入库还是重建都先按 file_id 清理，保证重试幂等且不会残留孤儿片段。
+            vector_write_started = True
+            collection = get_vector_collection()
             collection.delete(where={"file_id": file_id})
             collection.add(
                 documents=[chunk["text"] for chunk in chunks],
@@ -883,11 +972,13 @@ def process_and_vectorize_document_stream(
             _mark_ingestion_failed(
                 file_id, effective_engine, started_at, "客户端中断了入库流",
                 page_count, unit_type, unit_count,
+                cleanup_vectors=replace_existing or vector_write_started,
             )
         raise
     except Exception as exc:
         cleanup_errors = _mark_ingestion_failed(
-            file_id, effective_engine, started_at, exc, page_count, unit_type, unit_count
+            file_id, effective_engine, started_at, exc, page_count, unit_type, unit_count,
+            cleanup_vectors=replace_existing or vector_write_started,
         )
         yield f"[致命异常] 💥 处理中断: {str(exc)}。已按 file_id 补偿删除向量。\n"
         for cleanup_error in cleanup_errors:
@@ -1135,7 +1226,7 @@ def retrieve_relevant_context(
         if where is not None:
             query_args["where"] = where
 
-        results = collection.query(**query_args)
+        results = get_vector_collection().query(**query_args)
         documents = (results.get("documents") or [[]])[0] or []
         metadatas = (results.get("metadatas") or [[]])[0] or []
         distances = (results.get("distances") or [[]])[0] or []

@@ -11,7 +11,11 @@ from pydantic import BaseModel
 from core.db import get_db_connection
 from core.document_parser import MIME_TYPE_BY_DOCUMENT_TYPE, preview_text
 from core.paths import DATA_DIR, UPLOAD_DIR
-from core.processor import collection, VECTOR_WRITE_LOCK  # 导入 ChromaDB collection 用于管理向量元数据
+from core.processor import (
+    VECTOR_WRITE_LOCK,
+    get_vector_collection,
+    update_vector_course_metadata,
+)
 
 router = APIRouter()
 BACKEND_DIR = DATA_DIR
@@ -29,6 +33,27 @@ class FolderRenameReq(BaseModel):
 
 class MoveFileReq(BaseModel):
     course_id: int
+
+
+def _normalized_folder_name(name: str) -> str:
+    normalized = (name or "").strip()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="文件夹名称不能为空")
+    if len(normalized) > 100:
+        raise HTTPException(status_code=400, detail="文件夹名称不能超过 100 个字符")
+    return normalized
+
+
+def _require_folder(conn, folder_id: int):
+    if folder_id == 0:
+        return None
+    folder = conn.execute(
+        "SELECT id, course_name, parent_id FROM courses WHERE id = ?",
+        (folder_id,),
+    ).fetchone()
+    if not folder:
+        raise HTTPException(status_code=404, detail=f"目标文件夹不存在: {folder_id}")
+    return folder
 
 
 def _normalize_search_text(value: str):
@@ -104,19 +129,7 @@ def _resolve_library_file(file_path: str):
 
 def _sync_file_course_metadata(file_id: int, course_id: int):
     """文件移动后同步 Chroma 元数据，否则课程范围检索会命中旧目录。"""
-    with VECTOR_WRITE_LOCK:
-        stored = collection.get(where={"file_id": file_id}, include=["metadatas"])
-        ids = stored.get("ids") or []
-        metadatas = stored.get("metadatas") or []
-        if not ids:
-            return
-
-        updated_metadatas = []
-        for metadata in metadatas:
-            updated = dict(metadata or {})
-            updated["course_id"] = course_id
-            updated_metadatas.append(updated)
-        collection.update(ids=ids, metadatas=updated_metadatas)
+    update_vector_course_metadata(file_id, course_id)
 
 
 # =====================================================================
@@ -212,20 +225,37 @@ def search_library(
 @router.post("/folders")
 def create_folder(req: CourseCreate):
     conn = get_db_connection()
-    db_parent = None if req.parent_id == 0 else req.parent_id
-    conn.execute("INSERT INTO courses (course_name, parent_id) VALUES (?, ?)", (req.course_name, db_parent))
-    conn.commit()
-    conn.close()
-    return {"message": "分类创建成功"}
+    try:
+        parent_id = int(req.parent_id or 0)
+        _require_folder(conn, parent_id)
+        db_parent = None if parent_id == 0 else parent_id
+        cursor = conn.execute(
+            "INSERT INTO courses (course_name, parent_id) VALUES (?, ?)",
+            (_normalized_folder_name(req.course_name), db_parent),
+        )
+        conn.commit()
+        return {
+            "message": "分类创建成功",
+            "id": cursor.lastrowid,
+            "parent_id": parent_id,
+        }
+    finally:
+        conn.close()
 
 # 重命名文件夹
 @router.put("/folders/{folder_id}")
 def rename_folder(folder_id: int, req: FolderRenameReq):
     conn = get_db_connection()
-    conn.execute("UPDATE courses SET course_name = ? WHERE id = ?", (req.new_name, folder_id))
-    conn.commit()
-    conn.close()
-    return {"message": "文件夹重命名成功"}
+    try:
+        _require_folder(conn, folder_id)
+        conn.execute(
+            "UPDATE courses SET course_name = ? WHERE id = ?",
+            (_normalized_folder_name(req.new_name), folder_id),
+        )
+        conn.commit()
+        return {"message": "文件夹重命名成功"}
+    finally:
+        conn.close()
 
 # 安全删除文件夹 (防数据丢失策略)
 @router.delete("/folders/{folder_id}")
@@ -332,15 +362,42 @@ def get_files(course_id: int):
 @router.put("/files/{file_id}/move")
 def move_file(file_id: int, req: MoveFileReq):
     conn = get_db_connection()
-    db_course_id = None if req.course_id == 0 else req.course_id
-    conn.execute("UPDATE knowledge_files SET course_id = ? WHERE id = ?", (db_course_id, file_id))
-    conn.commit()
-    conn.close()
+    previous_course_id = 0
+    vector_synced = False
     try:
+        file_record = conn.execute(
+            "SELECT id, course_id FROM knowledge_files WHERE id = ?",
+            (file_id,),
+        ).fetchone()
+        if not file_record:
+            raise HTTPException(status_code=404, detail="文件不存在")
+        _require_folder(conn, req.course_id)
+        previous_course_id = file_record["course_id"] or 0
+        if previous_course_id == req.course_id:
+            return {"message": "文件已在目标文件夹中", "course_id": req.course_id}
+        db_course_id = None if req.course_id == 0 else req.course_id
+        # 向量加载可能较慢，不在 SQLite 写事务持锁期间执行。
         _sync_file_course_metadata(file_id, req.course_id)
+        vector_synced = True
+        conn.execute(
+            "UPDATE knowledge_files SET course_id = ? WHERE id = ?",
+            (db_course_id, file_id),
+        )
+        conn.commit()
+        return {"message": "文件已成功移动", "course_id": req.course_id}
+    except HTTPException:
+        conn.rollback()
+        raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"文件已移动，但向量课程范围同步失败: {exc}")
-    return {"message": "文件已成功移动"}
+        conn.rollback()
+        if vector_synced:
+            try:
+                _sync_file_course_metadata(file_id, previous_course_id)
+            except Exception:
+                pass
+        raise HTTPException(status_code=500, detail=f"文件移动失败，已回滚: {exc}") from exc
+    finally:
+        conn.close()
 
 # 终极双重删除 (物理文件 + 向量碎片)
 @router.delete("/files/{file_id}")
@@ -360,7 +417,7 @@ def delete_file(file_id: int):
     # 2. 向量除根
     try:
         with VECTOR_WRITE_LOCK:
-            collection.delete(where={"file_id": file_id})
+            get_vector_collection().delete(where={"file_id": file_id})
     except Exception as e:
         print(f"ChromaDB 删除警告 (可能为空): {e}")
 

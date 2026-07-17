@@ -1,0 +1,779 @@
+厦大 JiaYuan 项目总体分层架构——详细通俗讲解
+================================================
+
+适合读者：刚接触前后端分离、FastAPI、RAG 或 Electron 的开发者
+讲解依据：当前项目中的真实文件和真实调用流程
+
+
+一、先用一句话理解整个项目
+--------------------------
+
+这个项目可以看成一座“本地数字图书馆”：
+
+1. Vue 前端是读者看到的服务大厅，负责按钮、对话框、文件拖拽和结果展示。
+2. FastAPI 路由层是办事窗口，负责接收请求、检查请求参数并把任务分配出去。
+3. backend/core 是后台工作区，真正完成文档解析、OCR、切片、向量化、检索、校园认证等工作。
+4. SQLite、Chroma、uploads 和 models 是库房，分别保存结构化记录、向量索引、原始文件和模型。
+5. Electron 是桌面应用的“外壳和总管”，负责创建 Windows 窗口、准备私有 Python、启动后端并加载前端。
+6. NSIS 是安装程序，只负责把整套应用安装到 Windows，并创建桌面、开始菜单快捷方式。
+
+所以，界面不是直接读取 PDF，也不是直接操作数据库。界面先向 FastAPI 发请求，FastAPI 再调用核心模块，核心模块最后读写本地数据。
+
+
+二、原架构图逐行翻译
+--------------------
+
+原图：
+
+  [Vue 3 + Element Plus 前端]
+              |
+              | HTTP / 流式 fetch
+              v
+  [FastAPI 路由层 backend/routes]
+              |
+              v
+  [业务核心层 backend/core]
+      |          |             |
+      |          |             +-- 校园认证 / OJ / 外部大模型
+      |          +-- PyMuPDF / Tesseract / Marker / MinerU
+      +-- 文档校验、切片、混合检索、状态补偿
+              |
+              v
+  [SQLite + Chroma + uploads + models]
+
+翻译成一次真实操作就是：
+
+“用户在 Vue 页面拖入一份 PDF”
+  -> 前端通过 HTTP 把 PDF 交给 /api/rag/upload
+  -> FastAPI 的 rag.py 接住文件
+  -> processor.py 调用 PyMuPDF、Tesseract、Marker 或 MinerU 提取内容
+  -> 将内容切成若干 chunk
+  -> 将文件状态写进 SQLite，将 chunk 向量写进 Chroma
+  -> 原文件保存在 uploads，向量模型放在 models
+  -> 处理进度不断以流式文本返回前端
+  -> 前端逐行显示“解析中、向量化中、完成”等日志。
+
+图中的竖线和箭头不是某种特殊代码，只表示“上一层调用下一层”。每一层有不同职责，这样修改界面时不必碰解析算法，修改解析算法时也不必重写按钮。
+
+
+三、第一层：Vue 3 + Element Plus 前端到底负责什么
+-------------------------------------------------
+
+主要目录：frontend/src
+
+前端负责的是“看得见、点得到”的部分，例如：
+
+- ChatView.vue：文献对话、拖拽上传、网页导入、检索范围、流式回答、引用来源。
+- LibraryPanel.vue：课程文件夹、资料列表、模糊搜索、移动和删除文件、预览文档。
+- DeadlineBoard.vue：账号选择、DDL 获取和同步。
+- CampusView.vue：校园账号和相关功能。
+- OjView.vue：OJ 任务及流式执行日志。
+- SettingsView.vue：模型配置、PyMuPDF/Marker/MinerU 引擎选择和初始化。
+
+Element Plus 提供按钮、输入框、上传框、树形选择器、弹窗、提示消息等现成界面组件；Vue 3 负责保存页面状态并让界面随状态自动变化。
+
+例如 ChatView.vue 中的 pendingFiles 是待导入文件队列。用户拖入文件后，数组发生变化，Vue 会自动重新渲染文件列表，不需要手动修改网页 DOM。
+
+前端不应该承担以下工作：
+
+- 不直接连接 SQLite。
+- 不直接调用 Tesseract。
+- 不直接加载数百 MB 的向量模型。
+- 不在浏览器中执行 Marker/MinerU。
+
+原因很实际：这些工作需要访问本地文件、Python 库和 GPU，浏览器环境既不适合也不安全。因此它们放在后端。
+
+
+四、HTTP 请求与“流式 fetch”有什么区别
+--------------------------------------
+
+1. 普通 HTTP 请求
+
+普通请求像去窗口办一张证明：提交材料，然后等窗口一次性返回完整结果。
+
+例子：
+
+GET /api/library/folders
+
+后端一次性返回 JSON：有哪些课程文件夹。前端调用 response.json() 后再显示列表。
+
+2. 流式 fetch
+
+流式请求像在窗口外看实时进度屏：任务没有全部结束，但后端每完成一步就先发一行消息。
+
+上传文档时，ChatView.vue 调用：
+
+POST http://127.0.0.1:8000/api/rag/upload
+
+随后使用 response.body.getReader() 不断读取字节块。后端则使用 StreamingResponse，并通过 yield 逐条发送：
+
+[状态] uploaded -> parsing
+[解析] 正在调用 PyMuPDF……
+[OCR] 检测到无文字层页面……
+[向量化] 共生成若干片段……
+[状态] indexing -> ready
+
+聊天回答也采用相同思路：大模型每生成一点文字，chat.py 就立即 yield，前端逐字追加，所以用户不必等完整回答生成后才看到内容。
+
+3. 为什么“HTTP 200”不一定等于业务成功
+
+流式连接一旦开始，HTTP 响应头通常已经发出，状态可能是 200。之后解析程序才有可能报错。因此流中出现“failed”或“致命异常”时，虽然网络层仍然是 200，业务层却已经失败。
+
+这就是为什么前端既要检查 response.ok，也要继续解析流内的状态信息。response.ok 只能说明“连接和 HTTP 请求正常”，不能单独证明“PDF 已经成功入库”。
+
+
+五、第二层：FastAPI 路由层为什么像“办事窗口”
+----------------------------------------------
+
+后端入口是 backend/main.py。
+
+main.py 创建 FastAPI 应用，配置 CORS，注册健康检查，并把不同业务路由挂载到不同地址：
+
+- backend/routes/rag.py       -> /api/rag
+- backend/routes/chat.py      -> /api/chat
+- backend/routes/library.py   -> /api/library
+- backend/routes/engine.py    -> /api/engine
+- backend/routes/campus.py    -> /api/campus
+- backend/routes/oj.py        -> /api/oj
+- backend/routes/deadlines.py -> /api/deadlines
+
+“路由”可以理解为请求地址和 Python 函数之间的通讯录。
+
+例如：
+
+POST /api/rag/upload
+
+对应 rag.py 中的 upload_document()。FastAPI 会自动把上传文件转换成 UploadFile，把表单中的 course_id 转成整数，再调用这个函数。
+
+路由层主要做四类事情：
+
+1. 接收参数：文件、课程 ID、引擎名称、问题文本等。
+2. 基础校验：参数是否为空、文件类型是否合法、记录是否存在。
+3. 调度核心函数：把任务交给 processor.py、engine_init.py 等模块。
+4. 组织响应：返回 JSON、文件内容或 StreamingResponse。
+
+路由层并不适合塞入几百行解析算法。否则一个接口函数会同时处理网络、数据库、PDF、模型和异常补偿，后续非常难测试和维护。
+
+
+六、第三层：backend/core 为什么叫“业务核心层”
+---------------------------------------------
+
+这里是真正干活的后台工作区，当前主要文件职责如下。
+
+1. backend/core/processor.py
+
+这是 RAG 主处理器，负责：
+
+- PDF 文字层提取。
+- Tesseract OCR 兜底。
+- 启动 Marker/MinerU 子进程并读取结果。
+- 文档切片。
+- 向 Chroma 写入向量和元数据。
+- 按课程/文件范围检索。
+- 向量、BM25、MMR、reranker 混合排序。
+- 相关度阈值判断。
+- 失败时按 file_id 删除残留向量。
+- 服务重启后恢复异常中断的入库状态。
+
+2. backend/core/document_parser.py
+
+这是通用文档入口，负责：
+
+- 判断 PDF、DOCX、PPTX、Markdown、HTML 类型。
+- 校验扩展名、MIME 和文件结构。
+- 限制文件大小。
+- 防止伪装文件及 Office ZIP 解压风险。
+- 使用 python-docx 提取 Word。
+- 使用 python-pptx 提取 PowerPoint。
+- 按 Markdown 标题或网页章节组织内容。
+- 统一产生 section、location_type、location_index 等位置信息。
+
+3. backend/core/engine_init.py
+
+负责 Marker/MinerU 的安装检测、初始化、运行设备选择、CLI 定位、命令构造和配置记录。SettingsView.vue 点击初始化时，请求先到 routes/engine.py，再由它调用此模块。
+
+4. backend/core/db.py
+
+负责 SQLite 连接、表结构初始化、数据库字段迁移、文件入库状态更新以及 DDL 缓存等操作。
+
+5. backend/core/paths.py
+
+统一决定“数据应该写到哪里”。开发模式默认写在 backend 目录；桌面模式通过环境变量把可变数据写入用户的 LocalAppData，避免向只读安装目录写数据。
+
+6. backend/core/campus_core.py 与 campus_task.py
+
+负责校园平台认证、任务获取及校园业务逻辑。
+
+7. backend/core/oj_core.py
+
+负责 OJ 相关任务的实际执行逻辑。routes/oj.py 负责 HTTP/SSE 通讯，它负责业务执行。
+
+
+七、第四层：为什么同时需要 SQLite、Chroma、uploads 和 models
+----------------------------------------------------------
+
+它们并不是四份重复数据，而是四种不同用途的库房。
+
+1. SQLite：保存“可精确查询的业务账本”
+
+实际数据库文件是 campus_assistant.db。主要记录包括：
+
+- courses：课程/文件夹树。
+- knowledge_files：资料文件记录、文件名、课程、状态、页数、引擎、耗时、chunk 数、SHA-256、错误信息等。
+- deadlines：截止日期缓存。
+- 校园账号相关表：由校园路由按需要初始化和维护。
+
+例如要查询“文件 27 当前是 parsing 还是 ready”，SQLite 最合适，因为这是明确字段的精确查询。
+
+2. Chroma：保存“可以按语义查找的文本记忆”
+
+文档被切成 chunk 后，BGE 模型把每个 chunk 转换成一组数字，也就是 embedding 向量。Chroma 保存：
+
+- chunk 原文。
+- embedding 向量。
+- file_id、course_id。
+- page、section、chunk_index、engine。
+- document_type、location_type、location_index、source_url 等元数据。
+
+用户问“戴维南定理如何使用”时，即使文档原句不是完全相同的字，向量仍有机会找出语义相近的段落。这是普通 SQL LIKE 难以完成的。
+
+3. uploads：保存原始资料
+
+这里保存 PDF、DOCX、PPTX、Markdown、HTML 快照等原文件。引用来源被点击时，后端可以根据 knowledge_files 中的 file_path 找回原文并打开或预览。
+
+4. models：保存本地模型和引擎资源
+
+例如 BAAI/bge-small-zh-v1.5 向量模型，以及按需初始化的 Marker/MinerU 相关模型。模型与用户文件分开存放，更新模型不会改变 SQLite 中的文件记录。
+
+
+八、完整实例一：上传一份“电路原理.pdf”时发生了什么
+------------------------------------------------------
+
+下面按真实调用顺序追踪。
+
+第 1 步：前端建立上传任务
+
+用户把文件拖进 ChatView.vue。前端检查扩展名和 100 MB 大小限制，把它加入 pendingFiles，并显示在导入对话框中。
+
+用户选择目标课程和解析引擎后，uploadOneDocument() 创建 FormData，放入：
+
+- file：文件二进制内容。
+- course_id：目标课程。
+- engine：pymupdf、marker 或 mineru。
+
+然后请求 POST /api/rag/upload。
+
+第 2 步：路由安全接收
+
+rag.py 的 upload_document() 先进行以下操作：
+
+- 清理文件名，避免目录穿越。
+- 分块写入临时文件，而不是一次把 100 MB 全放进内存。
+- 写入时计算 SHA-256。
+- 调用 document_parser.py 校验真实格式。
+
+前端的 accept 只是方便用户选择文件，真正的安全校验必须在后端，因为客户端参数可以伪造。
+
+第 3 步：判断能否复用
+
+_register_staged_document() 用 SHA-256 查询 knowledge_files。
+
+如果相同内容的文件已经处于 ready，并且原文件仍存在，就直接复用现有索引，不再重复解析。SHA-256 可以理解成文件内容的“数字指纹”：只要内容变化，指纹就会变化。
+
+如果没有可复用记录，则：
+
+- 把临时文件移动到 uploads。
+- 在 knowledge_files 新建记录。
+- 初始状态写为 uploaded。
+- 分配唯一 file_id。
+
+第 4 步：进入状态机
+
+processor.py 的 process_and_vectorize_document_stream() 接管任务：
+
+uploaded -> parsing -> indexing -> ready
+
+状态含义：
+
+- uploaded：原文件已经安全落盘，尚未开始解析。
+- parsing：正在提取文字、结构、页码或图片内容。
+- indexing：文字已经切片，正在生成向量并写入 Chroma。
+- ready：文件、元数据和向量索引都已完成，可以参与问答。
+- failed：某一步失败，错误信息被保存，可查看并重新入库。
+
+第 5 步：提取内容
+
+如果使用 PyMuPDF：
+
+- 先逐页读取 PDF 自带文字层。
+- 某页没有足够文字时，把该页渲染成图片。
+- 调用 Tesseract，使用 chi_sim 中文语言数据进行 OCR。
+- 已有正常文字层的页面不会无条件 OCR，避免浪费时间。
+
+如果使用 Marker/MinerU：
+
+- processor.py 根据 engine_init.py 构造命令。
+- 启动外部 CLI 子进程。
+- 读取进度输出并定期发送心跳，避免前端长时间看起来“卡死”。
+- 最长处理时间当前为 900 秒；异常时会回收子进程树。
+
+DOCX、PPTX、Markdown、HTML 还可以根据格式走 python-docx、python-pptx 或原生文本/网页解析逻辑。
+
+第 6 步：切片
+
+完整文档不能直接作为一个超长文本交给模型，因此按约 500 字符切成 chunk，相邻 chunk 保留约 50 字符重叠。
+
+重叠的意义是避免一句关键话正好被切片边界劈成两半。
+
+每个 chunk 同时保留来源元数据，例如：
+
+file_id = 27
+course_id = 3
+source = 电路原理.pdf
+page = 2
+section = 2.1 基尔霍夫定律
+chunk_index = 5
+engine = pymupdf
+
+第 7 步：向量化和落库
+
+BGE 模型把 chunk 转换为向量，Chroma 将向量、原文和元数据一起保存。processor.py 再把 knowledge_files 更新为 ready，并记录页数、chunk 数、实际引擎和耗时。
+
+第 8 步：前端确认结果
+
+整个过程中，后端不断发送日志。ChatView.vue 的 readUploadResponse() 读取并显示这些日志。只有业务流确认完成，前端才把队列项目标为 ready。
+
+如果中途失败：
+
+- 数据库状态改成 failed。
+- error_message 保存真实错误。
+- 已写入 Chroma 的向量按 file_id 补偿删除，避免孤儿向量。
+- 原始文档和失败记录保留，方便排查和重新入库。
+
+
+九、完整实例二：用户问“戴维南等效电路怎么求”时发生了什么
+------------------------------------------------------------
+
+第 1 步：前端确定检索范围
+
+ChatView.vue 的 buildRetrievePayload() 组织：
+
+- query：用户问题。
+- course_id：可选课程范围。
+- file_ids：可选精确文件范围。
+- n_results：最终需要的来源数量，当前最多 3。
+
+然后请求 POST /api/rag/retrieve。
+
+第 2 步：路由展开课程范围
+
+rag.py 的 retrieve_context() 接收请求。如果指定的是父课程文件夹，会用递归 SQL 展开它本身和所有子文件夹，再把 course_ids 与 file_ids 交给检索器。
+
+课程范围和文件范围同时存在时取交集。也就是说“课程 A + 文件 27”表示只在课程 A 范围内的文件 27 中搜索，不会扩大成并集。
+
+第 3 步：Chroma 先找向量 Top 10
+
+processor.py 对 Chroma 构造 where 条件，然后获取最相近的 10 个候选 chunk。这一步擅长找“意思接近”的内容。
+
+第 4 步：混合检索改善结果
+
+仅靠向量可能漏掉公式编号、专业缩写或精确术语，因此项目继续计算：
+
+- 向量相关度：语义是否接近。
+- BM25：问题关键词在段落中是否有代表性。
+- coverage：问题中的关键字被覆盖了多少。
+
+当前混合分数主要由向量分数构成，同时结合 BM25 和关键词覆盖率。
+
+第 5 步：MMR 去重
+
+假设 Top 10 中有 5 段都来自同一页，而且内容几乎相同，全部交给模型没有意义。MMR 会在“相关”与“不重复”之间取平衡，挑出最多 8 个较有差异的候选。
+
+第 6 步：reranker 精排
+
+CrossEncoder reranker 把“问题 + 候选段落”放在一起判断匹配程度，再重新排序。如果 reranker 模型不可用，系统会安全降级为 hybrid-fallback，不会让整个检索接口崩溃。
+
+第 7 步：最低相关度闸门
+
+最终分数低于 min_relevance（默认 0.55）的候选会被丢弃。
+
+如果没有段落通过门槛，后端直接返回：
+
+“资料库没有足够依据”
+
+此时前端不会调用外部大模型自由猜测。这是 RAG 中非常重要的防幻觉措施。
+
+第 8 步：生成 context 和 sources
+
+通过门槛的 Top 3 会组成：
+
+- context：交给大模型阅读的资料正文。
+- sources：交给前端展示的引用卡片。
+
+sources 中包含 file_id、文件名、页码/幻灯片/章节、解析引擎和相关度等信息。
+
+第 9 步：调用聊天模型
+
+前端把用户问题、context 和用户配置的模型信息发送到 POST /api/chat/。
+
+chat.py 使用 OpenAI 兼容客户端连接用户配置的 baseUrl 和 modelId，在 system prompt 中明确要求只能依据检索上下文回答，并通过 StreamingResponse 把回答逐步传回。
+
+第 10 步：显示引用并打开原文
+
+ChatView.vue 将 retrieve 返回的 sources 放在助手回答下方。例如：
+
+来源：电路原理.pdf，第 2 页
+
+点击 PDF 来源时打开相应页；DOCX/PPTX 可以打开或下载原文件；Markdown、HTML 可以进入安全预览；网页来源可以使用原始 URL。
+
+
+十、校园认证、DDL、OJ 和外部大模型在架构中处于哪里
+------------------------------------------------------
+
+它们都沿用同一套分层思想，但不经过文档向量化流程。
+
+1. 校园认证
+
+CampusView.vue
+  -> /api/campus
+  -> routes/campus.py
+  -> core/campus_core.py
+  -> 校园系统及 SQLite 账号记录
+
+2. DDL
+
+DeadlineBoard.vue
+  -> /api/deadlines/{student_id}
+  -> routes/deadlines.py
+  -> 校园任务获取逻辑
+  -> deadlines 表缓存
+
+3. OJ
+
+OjView.vue 使用 EventSource 接收 SSE 日志：
+
+OjView.vue
+  -> /api/oj/stream_solve
+  -> routes/oj.py
+  -> core/oj_core.py
+  -> 持续返回执行状态
+
+4. 外部大模型
+
+ChatView.vue
+  -> /api/chat/
+  -> routes/chat.py
+  -> OpenAI 兼容 API
+
+后端充当模型网关，浏览器无需直接处理 Python SDK，也便于统一加入 RAG 上下文和约束提示词。
+
+
+十一、Windows 桌面模式到底如何启动
+----------------------------------
+
+原图：
+
+  [NSIS 安装器] -> [Electron 主进程] -> 解压私有 Python/模型 -> 启动 FastAPI:8765
+                                      -> 加载 Vue 静态页面
+                                      -> 把页面中的 8000 请求重定向到 8765
+
+这部分最容易误解。它实际上分为“安装”和“首次启动”两个阶段。
+
+阶段 A：运行 JiaYuan-Setup-x64.exe
+
+NSIS 根据 desktop/package.json 中的配置完成：
+
+- 按当前用户安装应用，而不是修改系统 Python。
+- 把 Electron 程序和资源放进安装目录。
+- 创建桌面快捷方式。
+- 创建开始菜单快捷方式。
+- 安装结束后启动 JiaYuan。
+
+安装包中携带的主要资源有：
+
+- 编译后的 frontend/dist。
+- backend 源码。
+- runtime/python-runtime.tar。
+- runtime/models-runtime.tar。
+- runtime/runtime-manifest.json。
+
+注意：NSIS 负责“把压缩资源安装到应用目录”；私有 Python 和基础模型真正解压到用户数据目录，是 Electron 第一次启动应用时做的。
+
+阶段 B：Electron 主进程启动
+
+入口是 desktop/main.cjs。真实顺序如下：
+
+1. 请求单实例锁
+
+同一时间只保留一个 JiaYuan 主实例。再次点击快捷方式时，会把已有窗口恢复并置前，而不是重复启动两个后端。
+
+2. 创建 BrowserWindow
+
+Electron 创建 1440 x 920 的桌面窗口，先不显示业务页面。
+
+它启用了：
+
+- contextIsolation: true
+- nodeIntegration: false
+- sandbox: true
+- webSecurity: true
+
+这表示 Vue 页面不能随便调用 Node.js 或读取电脑任意文件，降低网页内容影响桌面系统的风险。
+
+3. 显示 splash.html
+
+启动画面显示“检查环境、准备 Python、加载模型、启动后端”等状态，避免首次启动时用户面对一个空白窗口。
+
+4. 检查 8765 健康接口
+
+Electron 请求：
+
+http://127.0.0.1:8765/api/health
+
+如果已经存在一个属于 JiaYuan 的健康后端，就直接使用；否则继续准备私有运行时。
+
+5. 准备私有 Python
+
+preparePrivatePython() 检查：
+
+%LOCALAPPDATA%\JiaYuan\runtime\python\python.exe
+
+如果不存在或 runtimeVersion 已变化，就使用 Windows 自带的 tar.exe 解压 python-runtime.tar。
+
+这套 Python 是应用私有的，不要求用户预装 Python，也不会把大量依赖写进全局 Python 环境。
+
+6. 准备基础向量模型
+
+prepareSeedModels() 检查本地 BGE 模型。如果不存在，就把 models-runtime.tar 解压到：
+
+%LOCALAPPDATA%\JiaYuan\models
+
+基础向量模型随安装包提供；Marker/MinerU 属于较大、且与 CPU/GPU 环境有关的可选引擎，仍由设置页的初始化逻辑按需安装和验证。
+
+7. 启动 FastAPI 子进程
+
+Electron 使用私有 python.exe 执行打包资源中的 backend/main.py，并设置：
+
+JIAYUAN_PORT=8765
+JIAYUAN_DATA_DIR=%LOCALAPPDATA%\JiaYuan\data
+JIAYUAN_MODEL_DIR=%LOCALAPPDATA%\JiaYuan\models
+HF_HOME=%LOCALAPPDATA%\JiaYuan\models\huggingface
+
+因此桌面版数据库、上传文件和向量库不会写入应用安装目录。
+
+8. 等待后端真正可用
+
+waitForBackend() 每约 1.5 秒请求一次 /api/health，最长等待 5 分钟。只有返回 status=ok 且 app=jiayuan，Electron 才认为后端准备完成。
+
+如果 Python 子进程提前退出，Electron 会提示启动失败，并让用户查看 backend.log，而不是无限显示加载界面。
+
+9. 加载 Vue 静态页面
+
+后端健康后，Electron 使用 loadFile() 打开打包后的 frontend/index.html。此时用户才进入正式界面。
+
+
+十二、为什么前端写 8000，桌面版却运行在 8765
+-----------------------------------------------
+
+这是原图中最关键、也最容易困惑的一点。
+
+开发模式通常这样运行：
+
+Vue 开发服务器：127.0.0.1:5173
+FastAPI 后端：  127.0.0.1:8000
+
+所以当前 Vue 组件中的接口地址写成：
+
+http://127.0.0.1:8000/api/...
+
+但桌面版把自己的私有后端固定启动在 8765。为了不把所有 Vue 文件再改一套桌面地址，Electron 在 createWindow() 中注册 webRequest.onBeforeRequest：
+
+页面想访问：
+http://127.0.0.1:8000/api/rag/retrieve
+
+Electron 在请求发出前改成：
+http://127.0.0.1:8765/api/rag/retrieve
+
+然后请求才真正发给 FastAPI。
+
+可以把 Electron 想象成一位知道“内部新分机号”的前台：Vue 仍拨 8000，前台自动替它转接到 8765。
+
+几个重要结论：
+
+- 不是同时启动了 8000 和 8765 两个后端。
+- 桌面版实际后端监听的是 8765。
+- 8000 是前端代码中的开发地址和转发匹配地址。
+- 转发只发生在 Electron 窗口会话内，不会修改用户整个 Windows 的网络设置。
+- 用普通浏览器直接打开同一份静态页面时，不会自动拥有 Electron 的这条转发规则。
+
+
+十三、开发模式和桌面模式对照
+----------------------------
+
+项目项             开发模式                         Windows 桌面模式
+--------------------------------------------------------------------------
+前端页面           Vite 5173 或 frontend/dist       Electron loadFile(index.html)
+后端端口           默认 8000                        8765
+Python             开发者当前 Python                应用私有 Python
+数据目录           backend                          %LOCALAPPDATA%\JiaYuan\data
+模型目录           backend/models 或环境变量目录    %LOCALAPPDATA%\JiaYuan\models
+后端启动方式       start.bat/命令行                 Electron spawn 子进程
+请求地址           直接访问 8000                    Electron 将 8000 改写为 8765
+关闭方式           开发者手动停止                   退出 Electron 时终止所属后端进程树
+
+
+十四、桌面版数据实际保存在哪里
+----------------------------
+
+默认根目录：
+
+%LOCALAPPDATA%\JiaYuan
+
+主要子目录：
+
+- data\campus_assistant.db：SQLite 数据库。
+- data\uploads：用户上传的原始资料。
+- data\vector_db：Chroma 向量库。
+- data\engine_flags：引擎初始化标记。
+- data\engine_config：引擎配置。
+- models：基础向量模型及按需模型。
+- runtime\python：应用私有 Python。
+- profile：Electron 浏览器配置和缓存。
+- logs\electron.log：Electron 启动日志。
+- logs\backend.log：FastAPI 标准输出、错误和退出信息。
+
+卸载配置中的 deleteAppDataOnUninstall=false，意味着普通卸载默认不主动删除这些用户数据。这样重装应用时资料库仍可保留，也避免误删用户上传文件。
+
+
+十五、项目为什么要分层，而不是全部写进一个文件
+--------------------------------------------
+
+假设没有分层，点击“上传”后，ChatView.vue 自己要负责：
+
+- 打开 PDF。
+- 调 OCR。
+- 启动 GPU 程序。
+- 操作 SQLite。
+- 写向量库。
+- 调大模型。
+- 处理 Windows 路径。
+
+这在浏览器里几乎不可行，也会把安全和维护问题混在一起。
+
+分层后的实际好处：
+
+1. 修改界面样式，只需调整 Vue 和 CSS。
+2. 增加 DOCX 解析器，主要调整 document_parser.py 和 processor.py。
+3. 修改检索排序，不影响上传弹窗和校园认证。
+4. SQLite 字段迁移集中放在 db.py。
+5. 桌面端口或运行时变化集中放在 main.cjs。
+6. 某层报错时可以沿调用链快速定位，而不是在一个巨大文件中寻找。
+
+
+十六、出现问题时如何按层定位
+----------------------------
+
+情况 1：按钮点了完全没有请求
+
+优先检查 Vue 组件、浏览器开发者工具 Console，以及按钮事件是否触发。
+
+情况 2：请求返回 404 或 422
+
+优先检查 routes 中是否注册了对应地址、请求方法是否正确、Pydantic/Form 参数是否匹配。
+
+情况 3：上传日志停在“正在启用 Marker/MinerU”
+
+优先检查 engine_init.py、processor.py 的子进程命令、GPU 环境和 backend.log。
+
+情况 4：文件显示 ready，但问答搜不到
+
+检查 Chroma 是否写入 chunk、course_id/file_id 过滤是否正确、相关度阈值是否过高，以及检索 diagnostics。
+
+情况 5：回答有内容但来源打不开
+
+检查 knowledge_files.file_path、uploads 中原文件、library.py 的 content/preview 接口，以及 source 中的 file_id 和 location_type。
+
+情况 6：安装版停在启动画面
+
+依次查看：
+
+%LOCALAPPDATA%\JiaYuan\logs\electron.log
+%LOCALAPPDATA%\JiaYuan\logs\backend.log
+
+前者说明 Python/模型解压和子进程启动情况，后者说明 FastAPI 导入依赖、模型加载和端口监听情况。
+
+情况 7：开发模式正常，桌面版接口失败
+
+检查 FastAPI 是否实际监听 8765、/api/health 是否成功，以及 Electron 的 8000 -> 8765 改写是否生效。
+
+
+十七、关键文件与架构位置速查
+----------------------------
+
+frontend/src/components/ChatView.vue
+  文献上传、检索、聊天、来源展示，对应“前端层”。
+
+frontend/src/components/LibraryPanel.vue
+  课程资料库、文件搜索和打开，对应“前端层”。
+
+frontend/src/components/SettingsView.vue
+  引擎与模型设置，对应“前端层”。
+
+backend/main.py
+  FastAPI 应用入口和路由总装配，对应“后端入口”。
+
+backend/routes/rag.py
+  上传、网页导入、重建索引、状态查询、检索接口，对应“路由层”。
+
+backend/routes/chat.py
+  外部大模型网关和流式回答，对应“路由层”。
+
+backend/routes/library.py
+  课程目录、文件管理、模糊搜索、预览和内容下载，对应“路由层”。
+
+backend/core/processor.py
+  解析、OCR、切片、向量化、混合检索、补偿删除，对应“核心层”。
+
+backend/core/document_parser.py
+  多格式校验与原生解析，对应“核心层”。
+
+backend/core/engine_init.py
+  Marker/MinerU 初始化和命令管理，对应“核心层”。
+
+backend/core/db.py
+  SQLite 表结构与数据操作，对应“数据访问层”。
+
+backend/core/paths.py
+  开发版/桌面版数据路径切换，对应“运行环境层”。
+
+desktop/main.cjs
+  Electron 窗口、私有运行时、后端启动、端口转发和关闭清理，对应“桌面外壳层”。
+
+desktop/package.json
+  Electron Builder/NSIS 打包范围、快捷方式和安装行为，对应“构建安装层”。
+
+desktop/runtime/*.tar
+  安装包携带的私有 Python 与基础模型资源。
+
+
+十八、最后用三条链路记住整个架构
+--------------------------------
+
+链路 1——显示界面：
+
+NSIS 安装 -> Electron 启动 -> 加载 Vue 页面 -> 用户看到窗口
+
+链路 2——处理资料：
+
+Vue 上传 -> FastAPI 路由 -> processor/document_parser -> uploads + SQLite + Chroma
+
+链路 3——回答问题：
+
+Vue 提问 -> Chroma 范围检索 -> BM25/MMR/reranker -> Top 3 + 来源
+         -> chat.py 调外部模型 -> 流式答案 -> Vue 展示答案和可点击引用
+
+只要记住：
+
+“Vue 负责交互，routes 负责接单，core 负责干活，数据库负责记住，Electron 负责把这一切组织成 Windows 应用。”
+
+这就是该项目分层架构图所表达的全部核心思想。

@@ -36,6 +36,7 @@ backend/vector_db_corrupt_backup_*/
 backend/engine_flags/*
 backend/engine_config/
 backend/models/
+backend/backups/
 
 # Local backups and temporary restore/build outputs
 .backups/

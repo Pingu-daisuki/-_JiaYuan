@@ -1,0 +1,120 @@
+{
+  "sourcePptx": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\source.pptx",
+  "workspace": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus",
+  "outDir": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\template-inspect",
+  "generatedAt": "2026-07-15T16:46:22.700Z",
+  "slideCount": 10,
+  "slideArtifacts": [
+    {
+      "slide": 1,
+      "previewPath": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\template-inspect\\source-slides\\source-slide-01.png",
+      "previewRelativePath": "template-inspect/source-slides/source-slide-01.png",
+      "layoutPath": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\template-inspect\\layouts\\source-slide-01.layout.json",
+      "layoutRelativePath": "template-inspect/layouts/source-slide-01.layout.json"
+    },
+    {
+      "slide": 2,
+      "previewPath": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\template-inspect\\source-slides\\source-slide-02.png",
+      "previewRelativePath": "template-inspect/source-slides/source-slide-02.png",
+      "layoutPath": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\template-inspect\\layouts\\source-slide-02.layout.json",
+      "layoutRelativePath": "template-inspect/layouts/source-slide-02.layout.json"
+    },
+    {
+      "slide": 3,
+      "previewPath": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\template-inspect\\source-slides\\source-slide-03.png",
+      "previewRelativePath": "template-inspect/source-slides/source-slide-03.png",
+      "layoutPath": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\template-inspect\\layouts\\source-slide-03.layout.json",
+      "layoutRelativePath": "template-inspect/layouts/source-slide-03.layout.json"
+    },
+    {
+      "slide": 4,
+      "previewPath": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\template-inspect\\source-slides\\source-slide-04.png",
+      "previewRelativePath": "template-inspect/source-slides/source-slide-04.png",
+      "layoutPath": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\template-inspect\\layouts\\source-slide-04.layout.json",
+      "layoutRelativePath": "template-inspect/layouts/source-slide-04.layout.json"
+    },
+    {
+      "slide": 5,
+      "previewPath": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\template-inspect\\source-slides\\source-slide-05.png",
+      "previewRelativePath": "template-inspect/source-slides/source-slide-05.png",
+      "layoutPath": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\template-inspect\\layouts\\source-slide-05.layout.json",
+      "layoutRelativePath": "template-inspect/layouts/source-slide-05.layout.json"
+    },
+    {
+      "slide": 6,
+      "previewPath": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\template-inspect\\source-slides\\source-slide-06.png",
+      "previewRelativePath": "template-inspect/source-slides/source-slide-06.png",
+      "layoutPath": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\template-inspect\\layouts\\source-slide-06.layout.json",
+      "layoutRelativePath": "template-inspect/layouts/source-slide-06.layout.json"
+    },
+    {
+      "slide": 7,
+      "previewPath": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\template-inspect\\source-slides\\source-slide-07.png",
+      "previewRelativePath": "template-inspect/source-slides/source-slide-07.png",
+      "layoutPath": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\template-inspect\\layouts\\source-slide-07.layout.json",
+      "layoutRelativePath": "template-inspect/layouts/source-slide-07.layout.json"
+    },
+    {
+      "slide": 8,
+      "previewPath": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\template-inspect\\source-slides\\source-slide-08.png",
+      "previewRelativePath": "template-inspect/source-slides/source-slide-08.png",
+      "layoutPath": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\template-inspect\\layouts\\source-slide-08.layout.json",
+      "layoutRelativePath": "template-inspect/layouts/source-slide-08.layout.json"
+    },
+    {
+      "slide": 9,
+      "previewPath": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\template-inspect\\source-slides\\source-slide-09.png",
+      "previewRelativePath": "template-inspect/source-slides/source-slide-09.png",
+      "layoutPath": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\template-inspect\\layouts\\source-slide-09.layout.json",
+      "layoutRelativePath": "template-inspect/layouts/source-slide-09.layout.json"
+    },
+    {
+      "slide": 10,
+      "previewPath": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\template-inspect\\source-slides\\source-slide-10.png",
+      "previewRelativePath": "template-inspect/source-slides/source-slide-10.png",
+      "layoutPath": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\template-inspect\\layouts\\source-slide-10.layout.json",
+      "layoutRelativePath": "template-inspect/layouts/source-slide-10.layout.json"
+    }
+  ],
+  "inspectPath": "E:\\download\\厦大_JiaYuan_已支持首次引擎下载 (2)\\厦大_JiaYuan\\outputs\\.codex-ppt-temp-campus\\template-inspect\\template-inspect.ndjson",
+  "inspectRelativePath": "template-inspect/template-inspect.ndjson",
+  "inspectTruncated": true,
+  "inspectMetadata": {
+    "revision": "xczoop",
+    "target": {
+      "id": "pr/eb18o3"
+    },
+    "kind": {
+      "requested": "slide,textbox,shape,image,table,chart",
+      "tokens": [
+        "slide",
+        "textbox",
+        "shape",
+        "image",
+        "table",
+        "chart"
+      ]
+    },
+    "include": {
+      "tokens": []
+    },
+    "exclude": {
+      "tokens": []
+    },
+    "notices": []
+  },
+  "extractedMedia": [],
+  "fonts": [
+    "+mj-lt",
+    "+mn-lt",
+    "Calibri",
+    "Calibri Light",
+    "Microsoft YaHei"
+  ],
+  "packageParts": {
+    "mediaCount": 0,
+    "slideXmlCount": 10,
+    "chartCount": 0,
+    "tableSlideCount": 0
+  }
+}

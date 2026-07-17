@@ -35,6 +35,7 @@ VECTOR_DB_DIR = os.path.join(DATA_DIR, "vector_db")
 ENGINE_FLAG_DIR = os.path.join(DATA_DIR, "engine_flags")
 ENGINE_CONFIG_DIR = os.path.join(DATA_DIR, "engine_config")
 DATABASE_PATH = os.path.join(DATA_DIR, "campus_assistant.db")
+BACKUP_DIR = os.path.join(DATA_DIR, "backups")
 MODEL_DIR = os.path.abspath(
     os.path.expanduser(os.getenv("JIAYUAN_MODEL_DIR", os.path.join(DATA_DIR, "models")))
 )
@@ -49,6 +50,7 @@ def ensure_runtime_dirs() -> None:
         ENGINE_FLAG_DIR,
         ENGINE_CONFIG_DIR,
         MODEL_DIR,
+        BACKUP_DIR,
     ):
         os.makedirs(directory, exist_ok=True)
 

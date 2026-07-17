@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 import queue
+import re
 import shutil
 import site
 import subprocess
@@ -65,7 +66,14 @@ GPU_TORCH_INDEX_URL = "https://download.pytorch.org/whl/cu128"
 INSTALL_TIMEOUT_SECONDS = 60 * 60
 MODEL_DOWNLOAD_TIMEOUT_SECONDS = 2 * 60 * 60
 PROBE_TIMEOUT_SECONDS = 30 * 60
-INIT_HEARTBEAT_SECONDS = 5
+# 心跳只表示子进程仍存活，不代表网络或磁盘仍有进展。降低显示频率并配合
+# 独立的“无有效输出”超时，防止一个僵死的 pip 连接伪装成正常安装一小时。
+INIT_HEARTBEAT_SECONDS = 15
+INSTALL_STALL_TIMEOUT_SECONDS = 3 * 60
+MODEL_DOWNLOAD_STALL_TIMEOUT_SECONDS = 10 * 60
+PROBE_STALL_TIMEOUT_SECONDS = 10 * 60
+PIP_NETWORK_TIMEOUT_SECONDS = 30
+PIP_RETRIES = 3
 MINERU_PIPELINE_MODEL_DIRS = (
     ("models", "Layout", "PP-DocLayoutV2"),
     ("models", "MFR", "unimernet_hf_small_2503"),
@@ -95,6 +103,8 @@ MARKER_LOW_VRAM_GPU_ARGS = (
 )
 
 _INIT_LOCKS = {engine: threading.Lock() for engine in SUPPORTED_ENGINES}
+_ACTIVE_INIT_CANCEL_EVENTS = {}
+_ACTIVE_INIT_GUARD = threading.Lock()
 
 
 def _candidate_script_dirs():
@@ -210,22 +220,51 @@ def _terminate_process_tree(process: subprocess.Popen) -> None:
     if process.poll() is not None:
         return
     if os.name == "nt":
-        subprocess.run(
+        taskkill_result = subprocess.run(
             ["taskkill", "/PID", str(process.pid), "/T", "/F"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,
         )
+        if taskkill_result.returncode != 0 and process.poll() is None:
+            process.terminate()
     else:
         process.terminate()
     try:
-        process.wait(timeout=8)
+        process.wait(timeout=5)
     except subprocess.TimeoutExpired:
         process.kill()
+        process.wait(timeout=5)
 
 
-def _stream_process_events(cmd, *, env, timeout_seconds: int):
-    """在子进程静默时仍产生心跳，且超时后回收完整进程树。"""
+def cancel_engine_initialization(engine: str) -> bool:
+    """请求取消正在运行的初始化；真正的进程回收由流循环完成。"""
+    if engine not in SUPPORTED_ENGINES:
+        return False
+    with _ACTIVE_INIT_GUARD:
+        cancel_event = _ACTIVE_INIT_CANCEL_EVENTS.get(engine)
+    if cancel_event is None:
+        return False
+    cancel_event.set()
+    return True
+
+
+def _stream_process_events(
+    cmd,
+    *,
+    env,
+    timeout_seconds: int,
+    stall_timeout_seconds: int,
+    cancel_event: threading.Event | None = None,
+):
+    """
+    流式读取子进程，并区分“仍存活”和“仍有有效进展”。
+
+    - hard timeout：整个阶段的绝对上限；
+    - stall timeout：连续没有 stdout/stderr 输出的上限；
+    - cancel event：用户主动取消；
+    - GeneratorExit：浏览器断开流时也必须回收完整进程树。
+    """
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -240,45 +279,102 @@ def _stream_process_events(cmd, *, env, timeout_seconds: int):
     output_finished = object()
 
     def pump_output():
+        buffered = []
+        last_carriage_emit = 0.0
         try:
-            for line in process.stdout:
-                output_queue.put(line.rstrip())
+            # tqdm/rich 常用 \r 原地刷新进度；逐字符读取才能把这种“有下载但
+            # 没有换行”的活动及时送回主循环。\r 输出最多每秒上报一次，避免
+            # 前端被成千上万条进度刷新淹没。
+            while True:
+                character = process.stdout.read(1)
+                if not character:
+                    if buffered:
+                        output_queue.put("".join(buffered).rstrip())
+                    break
+                if character not in {"\r", "\n"}:
+                    buffered.append(character)
+                    continue
+
+                line = "".join(buffered).rstrip()
+                buffered.clear()
+                if not line:
+                    continue
+                if character == "\r":
+                    now = time.monotonic()
+                    if now - last_carriage_emit < 1:
+                        continue
+                    last_carriage_emit = now
+                output_queue.put(line)
         finally:
             output_queue.put(output_finished)
 
     threading.Thread(target=pump_output, daemon=True).start()
     started_at = time.monotonic()
     last_heartbeat = started_at
-    timed_out = False
+    last_activity = started_at
+    output_closed = False
+    terminal_event = None
+    terminal_value = None
 
-    while True:
-        try:
-            item = output_queue.get(timeout=1)
-        except queue.Empty:
-            item = None
+    try:
+        while True:
+            try:
+                item = output_queue.get(timeout=1)
+            except queue.Empty:
+                item = None
 
-        now = time.monotonic()
-        elapsed = int(now - started_at)
-        if elapsed >= timeout_seconds and process.poll() is None:
-            timed_out = True
+            now = time.monotonic()
+            elapsed = int(now - started_at)
+            idle_seconds = int(now - last_activity)
+
+            if item is output_finished:
+                output_closed = True
+            elif isinstance(item, str) and item:
+                last_activity = now
+                last_heartbeat = now
+                yield "line", item
+
+            idle_seconds = int(now - last_activity)
+
+            if process.poll() is None:
+                if cancel_event is not None and cancel_event.is_set():
+                    terminal_event = "cancelled"
+                    terminal_value = elapsed
+                    break
+                if elapsed >= timeout_seconds:
+                    terminal_event = "timeout"
+                    terminal_value = elapsed
+                    break
+                if idle_seconds >= stall_timeout_seconds:
+                    terminal_event = "stalled"
+                    terminal_value = {
+                        "elapsed": elapsed,
+                        "idle": idle_seconds,
+                        "limit": stall_timeout_seconds,
+                    }
+                    break
+                if now - last_heartbeat >= INIT_HEARTBEAT_SECONDS:
+                    last_heartbeat = now
+                    yield "heartbeat", {
+                        "elapsed": elapsed,
+                        "idle": idle_seconds,
+                        "limit": stall_timeout_seconds,
+                    }
+
+            # 即使 stdout 被子进程提前关闭，也不能直接 process.wait() 无限等；
+            # 继续走上面的取消、停滞和绝对超时检查。
+            if process.poll() is not None and output_closed and output_queue.empty():
+                break
+    finally:
+        if process.poll() is None:
             _terminate_process_tree(process)
-            yield "timeout", elapsed
-            break
+        try:
+            process.stdout.close()
+        except (AttributeError, OSError):
+            pass
 
-        if item is output_finished:
-            break
-        if isinstance(item, str) and item:
-            last_heartbeat = now
-            yield "line", item
-        elif process.poll() is None and now - last_heartbeat >= INIT_HEARTBEAT_SECONDS:
-            last_heartbeat = now
-            yield "heartbeat", elapsed
-
-        if process.poll() is not None and output_queue.empty():
-            break
-
-    if not timed_out:
-        process.wait()
+    if terminal_event is not None:
+        yield terminal_event, terminal_value
     yield "exit", process.returncode
 
 
@@ -445,30 +541,81 @@ raise SystemExit(0 if architecture in supported or architecture.replace("sm_", "
     return result.returncode == 0, detail
 
 
-def _stream_pip_install(engine: str, use_gpu: bool):
+def _stream_pip_install(
+    engine: str,
+    use_gpu: bool,
+    cancel_event: threading.Event | None = None,
+):
     package = PIP_PACKAGE[engine]
     yield f"[提示] 未检测到可用的 {CLI_NAME[engine]}，开始安装 {package}。\n"
-    cmd = [sys.executable, "-m", "pip", "install", "--upgrade", package]
+    cmd = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--disable-pip-version-check",
+        "--no-input",
+        "--progress-bar",
+        "raw",
+        "--timeout",
+        str(PIP_NETWORK_TIMEOUT_SECONDS),
+        "--retries",
+        str(PIP_RETRIES),
+        "--prefer-binary",
+        "--upgrade",
+        package,
+    ]
     yield f"[执行] {_format_command(cmd)}\n"
+    yield (
+        f"[策略] 网络 {PIP_NETWORK_TIMEOUT_SECONDS} 秒无响应会重试，连续 "
+        f"{INSTALL_STALL_TIMEOUT_SECONDS} 秒没有有效安装输出会自动中止。\n"
+    )
 
     return_code = None
     timed_out = False
+    stalled = False
+    cancelled = False
+    last_download_percent = -1
     for event, value in _stream_process_events(
         cmd,
         env=_build_subprocess_env(use_gpu),
         timeout_seconds=INSTALL_TIMEOUT_SECONDS,
+        stall_timeout_seconds=INSTALL_STALL_TIMEOUT_SECONDS,
+        cancel_event=cancel_event,
     ):
         if event == "line":
-            yield f"[安装] {value}\n"
+            progress_match = re.fullmatch(r"Progress\s+(\d+)\s+of\s+(\d+)", value.strip())
+            if progress_match:
+                current = int(progress_match.group(1))
+                total = int(progress_match.group(2))
+                percent = int(current * 100 / total) if total > 0 else 0
+                if percent != last_download_percent:
+                    last_download_percent = percent
+                    total_label = f"/{total / 1024 / 1024:.1f} MB" if total > 0 else ""
+                    yield f"[下载] {current / 1024 / 1024:.1f}{total_label} ({percent}%)\n"
+            else:
+                yield f"[安装] {value}\n"
         elif event == "heartbeat":
-            yield f"[进度] 依赖安装仍在进行，已等待 {value} 秒...\n"
+            yield (
+                f"[等待] 安装子进程仍存活：总计 {value['elapsed']} 秒，"
+                f"距上次有效输出 {value['idle']} 秒；达到 {value['limit']} 秒将自动中止。\n"
+            )
+        elif event == "stalled":
+            stalled = True
+            yield (
+                f"[错误] ❌ 连续 {value['idle']} 秒没有任何下载或安装输出，"
+                "判定依赖安装已失去进展，已回收安装进程。\n"
+            )
+        elif event == "cancelled":
+            cancelled = True
+            yield f"[取消] 已按用户请求停止依赖安装（运行 {value} 秒）。\n"
         elif event == "timeout":
             timed_out = True
             yield f"[错误] ❌ {package} 安装超过 {value} 秒，已回收安装进程。\n"
         elif event == "exit":
             return_code = value
 
-    if timed_out or return_code != 0:
+    if timed_out or stalled or cancelled or return_code != 0:
         yield f"[错误] ❌ {package} 安装失败，返回码 {return_code}。\n"
         yield _INSTALL_FAIL
         return
@@ -481,7 +628,7 @@ def _stream_pip_install(engine: str, use_gpu: bool):
     yield _INSTALL_OK
 
 
-def _stream_gpu_torch_upgrade():
+def _stream_gpu_torch_upgrade(cancel_event: threading.Event | None = None):
     """安装可覆盖 RTX 50 系列架构的官方 PyTorch CUDA wheel。"""
     yield (
         "[设备] 正在安装支持当前 NVIDIA 显卡的 PyTorch CUDA 12.8 运行时；"
@@ -492,6 +639,15 @@ def _stream_gpu_torch_upgrade():
         "-m",
         "pip",
         "install",
+        "--disable-pip-version-check",
+        "--no-input",
+        "--progress-bar",
+        "raw",
+        "--timeout",
+        str(PIP_NETWORK_TIMEOUT_SECONDS),
+        "--retries",
+        str(PIP_RETRIES),
+        "--prefer-binary",
         "--upgrade",
         "--force-reinstall",
         f"torch=={GPU_TORCH_VERSION}",
@@ -503,22 +659,46 @@ def _stream_gpu_torch_upgrade():
 
     return_code = None
     timed_out = False
+    stalled = False
+    cancelled = False
+    last_download_percent = -1
     for event, value in _stream_process_events(
         cmd,
         env=_build_subprocess_env(True),
         timeout_seconds=INSTALL_TIMEOUT_SECONDS,
+        stall_timeout_seconds=INSTALL_STALL_TIMEOUT_SECONDS,
+        cancel_event=cancel_event,
     ):
         if event == "line":
-            yield f"[PyTorch] {value}\n"
+            progress_match = re.fullmatch(r"Progress\s+(\d+)\s+of\s+(\d+)", value.strip())
+            if progress_match:
+                current = int(progress_match.group(1))
+                total = int(progress_match.group(2))
+                percent = int(current * 100 / total) if total > 0 else 0
+                if percent != last_download_percent:
+                    last_download_percent = percent
+                    total_label = f"/{total / 1024 / 1024:.1f} MB" if total > 0 else ""
+                    yield f"[PyTorch 下载] {current / 1024 / 1024:.1f}{total_label} ({percent}%)\n"
+            else:
+                yield f"[PyTorch] {value}\n"
         elif event == "heartbeat":
-            yield f"[进度] PyTorch CUDA 下载/安装仍在进行，已等待 {value} 秒...\n"
+            yield (
+                f"[等待] PyTorch 子进程仍存活：总计 {value['elapsed']} 秒，"
+                f"距上次有效输出 {value['idle']} 秒；达到 {value['limit']} 秒将自动中止。\n"
+            )
+        elif event == "stalled":
+            stalled = True
+            yield f"[错误] ❌ PyTorch 连续 {value['idle']} 秒没有有效输出，已回收安装进程。\n"
+        elif event == "cancelled":
+            cancelled = True
+            yield f"[取消] 已按用户请求停止 PyTorch 安装（运行 {value} 秒）。\n"
         elif event == "timeout":
             timed_out = True
             yield f"[错误] ❌ PyTorch CUDA 安装超过 {value} 秒，已回收安装进程。\n"
         elif event == "exit":
             return_code = value
 
-    if timed_out or return_code != 0:
+    if timed_out or stalled or cancelled or return_code != 0:
         yield f"[错误] ❌ PyTorch CUDA 更新失败，返回码 {return_code}。\n"
         yield _GPU_TORCH_FAIL
         return
@@ -548,7 +728,7 @@ def _mineru_pipeline_models_ready() -> bool:
         return False
 
 
-def _stream_mineru_model_download():
+def _stream_mineru_model_download(cancel_event: threading.Event | None = None):
     """显式准备 MinerU pipeline 模型和其本地配置，避免 CLI 隐式下载时无进度卡住。"""
     if _mineru_pipeline_models_ready():
         yield "[模型] ✅ 已检测到完整的 MinerU pipeline 本地模型，跳过重复下载。\n"
@@ -566,22 +746,35 @@ def _stream_mineru_model_download():
     yield f"[执行] {_format_command(cmd)}\n"
     return_code = None
     timed_out = False
+    stalled = False
+    cancelled = False
     for event, value in _stream_process_events(
         cmd,
         env=_build_subprocess_env(True),
         timeout_seconds=MODEL_DOWNLOAD_TIMEOUT_SECONDS,
+        stall_timeout_seconds=MODEL_DOWNLOAD_STALL_TIMEOUT_SECONDS,
+        cancel_event=cancel_event,
     ):
         if event == "line":
             yield f"[模型] {value}\n"
         elif event == "heartbeat":
-            yield f"[进度] MinerU 模型仍在下载/校验，已等待 {value} 秒...\n"
+            yield (
+                f"[等待] MinerU 模型子进程仍存活：总计 {value['elapsed']} 秒，"
+                f"距上次有效输出 {value['idle']} 秒；达到 {value['limit']} 秒将自动中止。\n"
+            )
+        elif event == "stalled":
+            stalled = True
+            yield f"[错误] ❌ MinerU 模型连续 {value['idle']} 秒没有有效输出，已回收下载进程。\n"
+        elif event == "cancelled":
+            cancelled = True
+            yield f"[取消] 已按用户请求停止 MinerU 模型准备（运行 {value} 秒）。\n"
         elif event == "timeout":
             timed_out = True
             yield f"[错误] ❌ MinerU 模型准备超过 {value} 秒，已回收下载进程。\n"
         elif event == "exit":
             return_code = value
 
-    if timed_out or return_code != 0 or not _mineru_pipeline_models_ready():
+    if timed_out or stalled or cancelled or return_code != 0 or not _mineru_pipeline_models_ready():
         yield f"[错误] ❌ MinerU pipeline 模型准备失败，返回码 {return_code}，完整性校验未通过。\n"
         yield _MODELS_FAIL
         return
@@ -614,7 +807,13 @@ def _make_probe_pdf() -> str:
     return probe_path
 
 
-def _run_probe(engine: str, probe_path: str, output_dir: str, use_gpu: bool):
+def _run_probe(
+    engine: str,
+    probe_path: str,
+    output_dir: str,
+    use_gpu: bool,
+    cancel_event: threading.Event | None = None,
+):
     cmd = build_engine_command(
         engine,
         probe_path,
@@ -627,22 +826,35 @@ def _run_probe(engine: str, probe_path: str, output_dir: str, use_gpu: bool):
 
     return_code = None
     timed_out = False
+    stalled = False
+    cancelled = False
     for event, value in _stream_process_events(
         cmd,
         env=_build_subprocess_env(use_gpu),
         timeout_seconds=PROBE_TIMEOUT_SECONDS,
+        stall_timeout_seconds=PROBE_STALL_TIMEOUT_SECONDS,
+        cancel_event=cancel_event,
     ):
         if event == "line":
             yield f"[引擎] {value}\n"
         elif event == "heartbeat":
-            yield f"[进度] {engine.upper()} 正在加载模型/执行 OCR，已等待 {value} 秒...\n"
+            yield (
+                f"[等待] {engine.upper()} 子进程仍存活：总计 {value['elapsed']} 秒，"
+                f"距上次有效输出 {value['idle']} 秒；达到 {value['limit']} 秒将自动中止。\n"
+            )
+        elif event == "stalled":
+            stalled = True
+            yield f"[错误] ❌ {engine.upper()} 连续 {value['idle']} 秒没有模型/OCR 输出，已回收引擎进程。\n"
+        elif event == "cancelled":
+            cancelled = True
+            yield f"[取消] 已按用户请求停止 {engine.upper()} 扫描件验证（运行 {value} 秒）。\n"
         elif event == "timeout":
             timed_out = True
             yield f"[错误] ❌ {engine.upper()} 探针超过 {value} 秒，已回收引擎进程。\n"
         elif event == "exit":
             return_code = value
 
-    if timed_out or return_code != 0:
+    if timed_out or stalled or cancelled or return_code != 0:
         yield f"[错误] ❌ {engine.upper()} 扫描件探针失败，返回码 {return_code}。\n"
         yield _PROBE_FAIL
         return
@@ -668,6 +880,7 @@ def init_engine_stream(engine: str, use_gpu: bool = False):
     output_dir = None
     init_lock = None
     lock_acquired = False
+    cancel_event = None
     try:
         if engine not in SUPPORTED_ENGINES:
             yield f"[错误] ❌ 不支持的引擎: {engine}\n"
@@ -680,6 +893,10 @@ def init_engine_stream(engine: str, use_gpu: bool = False):
             yield f"[错误] ❌ {engine.upper()} 已有一个初始化任务正在运行，请勿重复点击。\n"
             yield INIT_FAILURE_TOKEN
             return
+
+        cancel_event = threading.Event()
+        with _ACTIVE_INIT_GUARD:
+            _ACTIVE_INIT_CANCEL_EVENTS[engine] = cancel_event
 
         compatibility_error = _python_compatibility_error(engine)
         if compatibility_error:
@@ -722,7 +939,7 @@ def init_engine_stream(engine: str, use_gpu: bool = False):
                     "正在补齐多格式文档依赖。\n"
                 )
             install_ok = False
-            for chunk in _stream_pip_install(engine, use_gpu):
+            for chunk in _stream_pip_install(engine, use_gpu, cancel_event):
                 if chunk == _INSTALL_OK:
                     install_ok = True
                 elif chunk == _INSTALL_FAIL:
@@ -741,7 +958,7 @@ def init_engine_stream(engine: str, use_gpu: bool = False):
             if gpu_detail:
                 yield f"[设备] {gpu_detail}\n"
             torch_upgrade_ok = False
-            for chunk in _stream_gpu_torch_upgrade():
+            for chunk in _stream_gpu_torch_upgrade(cancel_event):
                 if chunk == _GPU_TORCH_OK:
                     torch_upgrade_ok = True
                 elif chunk == _GPU_TORCH_FAIL:
@@ -755,7 +972,7 @@ def init_engine_stream(engine: str, use_gpu: bool = False):
 
         if engine == "mineru":
             models_ok = False
-            for chunk in _stream_mineru_model_download():
+            for chunk in _stream_mineru_model_download(cancel_event):
                 if chunk == _MODELS_OK:
                     models_ok = True
                 elif chunk == _MODELS_FAIL:
@@ -772,7 +989,7 @@ def init_engine_stream(engine: str, use_gpu: bool = False):
             yield f"[模型] Marker 首次运行会自动下载模型，缓存目录：{os.path.join(MODEL_DIR, 'huggingface')}\n"
 
         probe_ok = False
-        for chunk in _run_probe(engine, probe_path, output_dir, use_gpu):
+        for chunk in _run_probe(engine, probe_path, output_dir, use_gpu, cancel_event):
             if chunk == _PROBE_OK:
                 probe_ok = True
             elif chunk == _PROBE_FAIL:
@@ -801,5 +1018,9 @@ def init_engine_stream(engine: str, use_gpu: bool = False):
                 pass
         if output_dir:
             shutil.rmtree(output_dir, ignore_errors=True)
+        if cancel_event is not None:
+            with _ACTIVE_INIT_GUARD:
+                if _ACTIVE_INIT_CANCEL_EVENTS.get(engine) is cancel_event:
+                    _ACTIVE_INIT_CANCEL_EVENTS.pop(engine, None)
         if lock_acquired and init_lock:
             init_lock.release()

@@ -1,0 +1,13 @@
+Source deck: 厦大_JiaYuan_小学期课程汇报.pptx
+Slide size: 1280 × 720 (16:9), white background.
+Inventory: 10 slides. Slides 1–9 are retained in their original order. Source slide 10 is the closing/Q&A slide and is moved to the end after four appended implementation slides.
+Reusable patterns selected:
+- Source slide 6: four-quadrant numbered explanation with a black takeaway bar.
+- Source slide 5: five-stage horizontal process with three bottom callouts.
+- Source slide 8: three-card timeline with a bottom note.
+- Source slide 10: closing summary/Q&A, preserve-only.
+Typography: Microsoft YaHei throughout; blue #3D8DFF kickers and accents; black bold 43 px section titles; gray #56606B body copy; original font sizes, weights, insets, alignment, and vertical anchors must be preserved.
+Spacing: 52 px left title rail, 30 px kicker top, 62 px title top, slide number at lower right. New slides inherit all geometry from duplicated source slides.
+Inherited placeholders: no visible layout/master placeholders are present in the inspected slide layouts. All visible text is slide-level content. Only shape IDs listed in template-frame-map.json may be rewritten.
+Assets/brand: no logo or photographic asset is required for the new section. Existing blue/black/gray design furniture, connectors, cards, circles, rules, and footer positions are retained.
+Insertion contract: duplicate mapped source slides, rewrite inherited text boxes only, add no new primitives, and preserve the original closing slide unchanged as output slide 14.

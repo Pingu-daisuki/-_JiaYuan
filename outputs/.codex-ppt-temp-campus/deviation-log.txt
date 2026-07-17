@@ -1,0 +1,6 @@
+Output slide 10 duplicates source slide 6 and rewrites its four explanatory blocks for the shared account entry and the two independent authenticated sessions.
+Output slide 11 duplicates source slide 5 and rewrites its process stages and callouts for the sign-in monitor.
+Output slide 12 duplicates source slide 5 and rewrites its process stages and callouts for the XMUOJ solve pipeline.
+Output slide 13 duplicates source slide 8 and rewrites its three timeline cards and note for the Deadline board.
+Source slide 10 is moved from output position 10 to output position 14 so the original conclusion remains the final slide.
+No font, color, geometry, decorative element, or master/layout styling deviation is intended.

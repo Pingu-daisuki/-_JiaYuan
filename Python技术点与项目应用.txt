@@ -1,0 +1,532 @@
+JiaYuan 使用的 Python 技术点及其项目落点
+==========================================
+
+说明
+----
+本文从“语言特性、标准库、Web 框架、数据存储、文档处理、RAG、并发、网络、安全、工程化”十个角度
+列举当前项目实际使用的 Python 技术点。每项后面都给出项目路径、函数或具体用途。
+
+
+一、Python 语言基础与组织方式
+----------------------------
+
+1. 包与模块
+   - backend/core/__init__.py、backend/routes/__init__.py 把目录声明为包。
+   - backend/main.py 从 routes 导入各业务路由，从 core 导入路径和恢复逻辑。
+   - routes 层只处理 HTTP，core 层承载解析、数据库、校园和 OJ 业务，是典型分层组织。
+
+2. 绝对导入与运行路径
+   - backend/main.py 把 backend 目录加入 sys.path，使直接执行 python main.py 时也能导入 routes/core。
+   - backend/core/paths.py 统一处理源码目录、打包资源目录和用户可写数据目录。
+
+3. __future__.annotations
+   - backend/core/paths.py、document_parser.py 使用 from __future__ import annotations。
+   - 作用是延迟解析类型注解，减少前向引用问题，也让较现代的联合类型写法更稳定。
+
+4. 类型注解
+   - paths.py 使用 str | None。
+   - rag.py 使用 Optional[int]、list[int]。
+   - campus_task.py、deadlines.py 对参数和返回语义进行标注。
+   - 类型注解主要服务 IDE、可读性和 Pydantic，并非运行时强制检查所有普通函数。
+
+5. 类与面向对象
+   - core/campus_core.py 的 XmuNativeBot 封装认证会话、策略、抓取和签到动作。
+   - core/oj_core.py 的 OJClient 封装 Session、登录、实验、题目、提交和轮询。
+   - document_parser.py 的 DocumentValidationError 自定义业务异常类型。
+   - Pydantic BaseModel 类用于 HTTP 请求对象，见 chat.py、rag.py、library.py、campus.py。
+
+6. 函数、私有辅助函数和单一职责
+   - 以下划线开头的函数表示模块内部辅助逻辑，例如 processor._bm25_scores、
+     engine_init._stream_process_events、rag._assert_public_web_url。
+   - 路由函数保持较薄，把复杂处理下沉到 core。
+
+7. 闭包和嵌套函数
+   - routes/chat.py 在请求函数内部定义 generate()，捕获 response_stream 并逐块 yield。
+   - processor.py 的 flush_section() 捕获当前章节和行缓存。
+   - campus_core.py 在 send_radar 内定义坐标 payload 和几何求解函数，限制作用域。
+
+8. 生成器与 yield
+   - processor.process_and_vectorize_document_stream() 一边处理一边 yield 状态日志。
+   - engine_init.init_engine_stream() yield 安装、下载、探针和成功/失败标记。
+   - chat.py 的 generate() yield 大模型增量 token。
+   - campus.py、oj.py 的异步生成器 yield SSE/日志。
+
+9. 推导式、集合和字典
+   - processor.py 用列表/集合推导式归一化 course_ids/file_ids、构造 Chroma metadata 和 ids。
+   - document_parser.py 用集合检查 Office ZIP 成员。
+   - db.py 用集合比较已有列与允许更新字段。
+
+10. 海象运算符
+   - db.calculate_file_sha256() 使用 while chunk := file.read(...)，分块读取大文件而不一次占满内存。
+
+11. 异常链
+   - document_parser.py、rag.py 使用 raise ... from exc，保留原始异常上下文。
+   - FastAPI 路由把可预期错误转为 HTTPException，未知异常转为 5xx 或流式错误日志。
+
+12. 上下文管理器
+   - with open(...) 安全管理文件句柄。
+   - with zipfile.ZipFile(...) 管理 Office 压缩包。
+   - async with httpx.AsyncClient()/client.stream() 管理连接池和流式响应。
+
+
+二、FastAPI Web 后端
+-------------------
+
+1. FastAPI 应用
+   - backend/main.py：FastAPI(title=..., version=...) 创建 ASGI 应用。
+   - /api/health 为 Electron 启动探活。
+
+2. APIRouter 模块化路由
+   - routes/chat.py、rag.py、library.py、engine.py、campus.py、deadlines.py、oj.py 各自创建 APIRouter。
+   - main.py 通过 include_router 设置统一前缀和标签。
+
+3. 路径参数、查询参数和请求体
+   - /files/{file_id}、/account/{student_id} 使用路径参数。
+   - engine.init 的 use_gpu、deadlines 的 sync 使用查询参数。
+   - Pydantic BaseModel 接收 JSON 请求体，例如 QueryRequest、ModelConfig、CourseCreate。
+
+4. 文件与表单上传
+   - routes/rag.py 使用 UploadFile、File、Form。
+   - python-multipart 是 FastAPI 处理 multipart/form-data 的底层依赖。
+   - UploadFile 采用分块读取，配合 100 MiB 上限写入 staging 文件。
+
+5. Pydantic 数据验证
+   - rag.QueryRequest 用 Field 限制 n_results 1~3、min_relevance 0~1，并为 file_ids 提供 default_factory。
+   - chat.ChatRequest 把消息、模型配置和上下文转成明确结构。
+   - 好处是错误请求在进入业务逻辑前得到 422 响应。
+
+6. HTTPException
+   - 400：文档/URL格式错误。
+   - 401：统一认证失败。
+   - 403：文件路径越过安全目录。
+   - 404：数据库记录或原文件不存在。
+   - 409：文件正在解析/索引。
+   - 413：上传或网页响应过大。
+   - 422：空查询、预览解析失败等语义错误。
+   - 502：远端网页/校园接口失败。
+
+7. StreamingResponse
+   - chat.py：流式模型答案。
+   - rag.py：流式文档解析和向量化日志。
+   - engine.py：流式依赖安装与模型下载。
+   - campus.py、oj.py：流式自动化过程。
+   - 这是项目避免长任务“页面假死”的核心技术。
+
+8. FileResponse
+   - routes/library.py 安全解析数据库路径后返回原始 PDF/Office 文档。
+
+9. CORS
+   - main.py 使用 CORSMiddleware，允许 Vite 5173 和 Electron file:// 对应的 null Origin。
+   - 后端仅监听 127.0.0.1，缩小暴露面。
+
+10. 生命周期钩子
+   - main.py 的 startup 事件调用 recover_interrupted_ingestions 和 backfill_ready_file_metrics。
+   - 用于应用异常退出后的数据状态修复和旧数据库迁移补齐。
+
+11. Uvicorn
+   - main.py 在直接执行时启动 uvicorn。
+   - JIAYUAN_PORT 控制端口；JIAYUAN_RELOAD=1 仅开发模式开启热重载。
+
+
+三、异步编程与并发
+------------------
+
+1. async / await
+   - rag.py 的网页 DNS 检查和 HTTP 流式下载是全异步 I/O。
+   - deadlines.py、campus.py、oj.py 是异步路由。
+   - campus_core.XmuNativeBot.login() 异步等待统一认证。
+
+2. asyncio.to_thread
+   - deadlines.py 用它运行 requests 实现的同步 fetch_deadlines，避免阻塞事件循环。
+   - oj.py 用它包装 OJClient 登录、题目读取、模型调用、提交和轮询。
+   - campus_core.py 用它调用同步 xmulogin。
+
+3. asyncio.sleep
+   - oj.py 用于限频冷却和任务间隔，不阻塞其他请求。
+
+4. asyncio 子进程
+   - core/campus_task.py 使用 create_subprocess_shell、PIPE 和 communicate 捕获本机 xmu CLI 输出。
+   - 当前模块是未接入主流程的遗留辅助实现，并含开发机绝对路径。
+
+5. subprocess.Popen / run / spawn 思路
+   - engine_init.py 启动 pip、Marker、MinerU、模型下载和探针。
+   - processor.py 启动正式 Marker/MinerU 文档解析。
+   - windowsHide/CREATE_NO_WINDOW 避免桌面版弹黑框。
+
+6. 线程、队列与实时输出
+   - engine_init._stream_process_events() 和 processor._extract_with_external_engine_stream()：
+     单独线程读取子进程 stdout，写入 queue，主线程定期取消息并生成心跳。
+   - 解决 readline 阻塞导致无法检测超时的问题。
+
+7. threading.Lock
+   - engine_init._INIT_LOCKS：同一引擎不能被重复初始化。
+   - processor.VECTOR_WRITE_LOCK：Chroma 写入/删除串行化，降低并发损坏风险。
+   - processor.RERANKER_LOCK：避免多个请求重复加载大模型。
+
+8. 超时和进程树回收
+   - engine_init 定义安装、模型下载和探针不同超时。
+   - processor 对正式 Marker/MinerU 解析设置 15 分钟超时。
+   - Windows 使用 taskkill /T /F 终止子进程树，避免后台孤儿进程继续占 GPU。
+
+
+四、SQLite 数据库技术
+--------------------
+
+1. sqlite3 标准库
+   - core/db.py 统一打开 campus_assistant.db。
+   - row_factory=sqlite3.Row，让结果既能按列名访问也能转换成 dict。
+
+2. 建表与迁移
+   - init_db() 使用 executescript 创建 courses、knowledge_files、deadlines。
+   - _table_columns() 用 PRAGMA table_info 检查旧表。
+   - _ensure_column() 用 ALTER TABLE 增量补字段，避免要求用户删除旧库。
+
+3. 参数化 SQL
+   - 绝大多数查询使用 ? 占位符传值，避免把用户输入直接拼进 SQL。
+   - 动态拼接只用于经过白名单控制的列名集合。
+
+4. 事务
+   - 写操作完成后 commit；异常路径 rollback；finally 关闭连接。
+   - save_deadlines 采用“先删该学生旧数据，再写本次完整结果”的简单事务策略。
+
+5. 外键和索引
+   - knowledge_files.course_id 外键 ON DELETE SET NULL。
+   - 为 file_sha256+status 和 source_url 建索引，加速重复上传及网页复用。
+
+6. 递归 CTE
+   - routes/rag._expand_course_scope() 使用 WITH RECURSIVE 展开某课程及所有子目录。
+   - 返回结果用于 Chroma 的 course_id $in 过滤。
+
+7. busy_timeout
+   - get_db_connection() 配置 30 秒 busy timeout，缓解短时间多请求竞争 SQLite 写锁。
+
+8. 状态机
+   - uploaded -> parsing -> indexing -> ready/failed。
+   - db.update_file_ingestion() 校验允许的状态转移并原子更新指标。
+   - processor 在失败时写 error_message、完成时间并补偿删除向量。
+
+9. 校园账号表
+   - routes/campus.ensure_campus_table() 维护 campus_config。
+   - 当前密码是本机 SQLite 明文，属于需要后续加强的安全边界。
+
+
+五、文件、路径、编码和哈希
+--------------------------
+
+1. os / sys 路径管理
+   - paths.py 使用 os.path.abspath、expanduser、join、isabs。
+   - 根据 JIAYUAN_DATA_DIR、JIAYUAN_MODEL_DIR 和 sys.frozen 切换开发/桌面目录。
+
+2. pathlib.PurePosixPath
+   - document_parser._validate_office_archive() 检查 ZIP 内路径是否绝对或包含 ..，防止路径穿越。
+
+3. 临时文件和 UUID
+   - rag.py 以 .upload_{uuid}.tmp 写入上传 staging，校验成功后再移动。
+   - engine_init.py 为探针 PDF 和输出目录生成唯一名字。
+   - processor.py 为 Chroma chunk ID 和外部引擎输出目录生成唯一值。
+
+4. tempfile
+   - processor.py 在 OCR/外部处理等临时工作中使用临时目录，结束后清理。
+
+5. shutil
+   - engine_init.py 查找 CLI、清理输出目录。
+   - processor.py 清理 Marker/MinerU 的临时结果，避免 uploads 残留。
+
+6. hashlib SHA-256
+   - db.calculate_file_sha256() 分块计算文档哈希。
+   - rag.py 在上传时同步计算，用于重复上传复用和安全命名。
+
+7. 编码识别
+   - document_parser.decode_text_bytes() 支持 UTF-16 BOM、UTF-8 BOM、UTF-8 和 GB18030。
+   - campus_task.py 按 GBK 解码 Windows CLI 输出，并 errors='ignore' 防止单个乱码中断任务。
+   - Electron 启动后端时设置 PYTHONUTF8 和 PYTHONIOENCODING=utf-8。
+
+8. JSON
+   - engine_init 用 JSON 保存初始化标记和 MinerU 配置。
+   - campus.py 用 JSON 保存签到时间段。
+   - processor 读取 MinerU content_list 等 JSON 输出。
+   - oj.py 读取本地模型配置兼容路径。
+
+9. datetime/time
+   - ISO 时间记录入库开始/完成、引擎初始化时间。
+   - time.monotonic 用于可靠超时/耗时，不受系统时间回拨影响。
+   - campus_core 用当前 HH:MM 判断策略时间段。
+
+
+六、文档安全校验与解析
+----------------------
+
+1. 扩展名白名单
+   - document_parser.DOCUMENT_TYPE_BY_EXTENSION 支持 pdf/docx/pptx/md/markdown/html/htm。
+
+2. MIME 校验
+   - 每种 document_type 有允许 MIME 集合，同时兼容浏览器常见 generic MIME。
+   - 防止只改扩展名绕过格式限制。
+
+3. 文件签名/内容采样
+   - PDF 必须以 %PDF- 开头。
+   - DOCX/PPTX 必须包含 [Content_Types].xml 和指定 Office XML。
+   - Markdown/HTML 抽样检查 NUL 字节并验证文本编码。
+
+4. ZIP 安全
+   - zipfile 检查成员总数、解压后体积、单条目压缩比、加密标记、异常空压缩和 .. 路径。
+   - 对抗 Office ZIP bomb 与路径穿越。
+
+5. python-docx
+   - document_parser.extract_docx_document() 动态导入 Document。
+   - 按文档 XML 顺序读取段落和表格，识别 Heading 样式，把表格转换成 Markdown。
+
+6. python-pptx
+   - extract_pptx_document() 逐幻灯片读取文本框、表格和备注，location_type='slide'。
+
+7. BeautifulSoup4
+   - sanitize_html_snapshot() 删除 script、style、iframe 等不安全/无关节点。
+   - extract_html_segments_from_text() 识别标题和正文，生成 web_section。
+
+8. Markdown 正则解析
+   - _MARKDOWN_HEADING_RE 识别 1~6 级标题。
+   - 标题切换时 flush 当前段落，形成带 section 的 segment。
+
+9. 统一 segment 协议
+   - text：正文。
+   - section：章节名。
+   - location_type：page/slide/heading/web_section。
+   - location_index：页码、幻灯片序号或网页段落序号。
+   - page：仅 PDF 页定位的兼容字段。
+
+
+七、PDF、OCR 与视觉解析
+----------------------
+
+1. PyMuPDF / fitz
+   - processor._pdf_page_count() 读取页数。
+   - extract_pages_with_pymupdf() 逐页 get_text。
+   - 无有效文本时用 page.get_pixmap 按 150 DPI 渲染图像。
+   - engine_init._make_probe_pdf() 创建最小测试 PDF。
+
+2. Tesseract OCR
+   - processor._find_tesseract() 优先使用项目内置 backend/source/tesseract/tesseract.exe。
+   - _ocr_page_with_tesseract() 以 chi_sim 识别扫描页，并设置 TESSDATA_PREFIX。
+   - 作为默认 PyMuPDF 的逐页兜底，而不是要求用户手动选择 OCR。
+
+3. Marker
+   - engine_init 构造 marker_single 或 Python module entry 命令。
+   - 针对 8GB 显存设置低 batch、关闭多进程和较低 DPI。
+   - 用 MARKER_PAGE_SEPARATOR 保留页边界，processor 再还原页码元数据。
+
+4. MinerU
+   - engine_init 安装 mineru[pipeline]，配置 modelscope 缓存和 mineru.json。
+   - 检查 Layout/MFR/OCR/Table 等关键模型目录。
+   - processor 读取 Markdown 和 content_list JSON，恢复分页结构。
+
+5. GPU/CUDA 检查
+   - engine_init 运行小段 Python，检查 torch.cuda、设备名、compute capability 和已编译架构列表。
+   - 当前为 RTX 50 系列准备 PyTorch cu128 的升级路径。
+
+6. 真探针而非“命令存在即成功”
+   - 初始化会创建 PDF、实际运行目标引擎、确认非空 Markdown 后才写成功标记。
+   - 标记包含 schema_version、device、model_dir 和时间；模型被删后状态会重新变为未初始化。
+
+
+八、Chroma、Embedding 与 RAG
+---------------------------
+
+1. Chroma PersistentClient
+   - processor.py 把 VECTOR_DB_DIR 作为持久化目录。
+   - collection 名为 xmu_course_materials_v2。
+
+2. SentenceTransformerEmbeddingFunction
+   - 默认 BAAI/bge-small-zh-v1.5。
+   - 桌面版通过 RAG_EMBEDDING_LOCAL_FILES_ONLY=1 强制使用安装包释放的本地模型。
+
+3. 文档切片
+   - CHUNK_SIZE=500，CHUNK_OVERLAP=50。
+   - 先按章节拆分，再滑动窗口；为每片分配全文件唯一 chunk_index。
+
+4. Chroma 元数据
+   - file_id、course_id、source/file_name。
+   - page、section、location_type、location_index、chunk_index、engine。
+   - document_type、source_kind、source_url。
+   - 元数据让检索范围和点击引用不依赖再次解析正文。
+
+5. where 过滤
+   - _build_retrieval_filter() 组合 course_id/course_ids 与 file_ids。
+   - 多值使用 $in，同时存在时使用 $and，得到课程和文件的交集。
+
+6. 候选召回
+   - Chroma 查询最多取向量 Top 10，返回 documents、metadatas、distances、embeddings。
+
+7. 中文/英文分词
+   - _tokenize_for_bm25() 先 unicodedata.normalize('NFKC')、lower。
+   - 英文保留 token；连续中文生成单字/双字 token，兼顾无空格中文。
+
+8. BM25
+   - _bm25_scores() 计算词频、文档频率、IDF、长度归一化和查询覆盖率。
+   - Counter 用于词频统计，math.log 用于 IDF。
+
+9. 向量相关度
+   - _vector_relevance() 将 Chroma distance 转为 0~1 相关度。
+
+10. 余弦相似度与词法相似度
+   - _cosine_similarity() 用向量点积/模长衡量候选相似。
+   - _lexical_similarity() 在 embedding 缺失时提供文本去重降级。
+
+11. MMR
+   - _mmr_select() 在相关度与候选之间的差异性之间平衡，MMR_LAMBDA=0.72。
+   - 避免最终三个片段来自同一段的重复切片。
+
+12. CrossEncoder reranker
+   - _get_reranker() 懒加载 BAAI/bge-reranker-base，并用 Lock 防止重复加载。
+   - _rerank_candidates() 对候选窗口打分并 Sigmoid 归一化。
+   - 模型不可用时安全降级到 hybrid-fallback，不让整个问答失败。
+
+13. 最低证据阈值
+   - DEFAULT_MIN_RELEVANCE 默认 0.55，可由 RAG_MIN_RELEVANCE 覆盖。
+   - 全部低于阈值则 insufficient_evidence_response，不调用外部模型自由猜测。
+
+14. 引用组装
+   - 去重键综合 file_id、位置类型、位置序号、章节/chunk。
+   - 生成 sources JSON 供前端点击，并把“来源N｜文件｜位置”写进模型上下文。
+
+15. 幂等和补偿
+   - 正式写入前 collection.delete(where={'file_id': file_id})。
+   - 失败、删除文件或重建时同样按 file_id 清理，避免孤儿向量。
+
+
+九、HTTP、网页安全与外部服务
+----------------------------
+
+1. httpx 异步客户端
+   - rag._download_web_page() 设置连接/读取超时、关闭自动重定向，并逐次自行验证 Location。
+   - 使用 aiter_bytes 流式限制最大 10 MiB，避免一次加载无限响应。
+
+2. SSRF 防护
+   - urlparse 只允许 http/https，拒绝用户名密码式 URL。
+   - ipaddress 检查直接 IP。
+   - asyncio loop.getaddrinfo 解析域名全部地址。
+   - 拒绝 loopback、private、link-local、reserved 等地址。
+   - 每次重定向重新检查，最多 5 次，只接受 HTML Content-Type。
+
+3. requests.Session
+   - campus_core 和 oj_core 保持 Cookie/Headers 会话。
+   - 校园登录、数据抓取、OJ 登录/题目/提交/结果轮询均基于同步 requests。
+
+4. urllib3
+   - oj_core.py 和 routes/oj.py 当前关闭 InsecureRequestWarning，用于兼容目标 OJ 证书环境。
+   - 这降低 HTTPS 安全性，是后续应改进的点。
+
+5. xmulogin
+   - campus_core.login() 通过 xmulogin(type=3, username, password) 完成统一身份认证并接管 Session。
+
+6. OpenAI Python SDK
+   - routes/chat.py 使用 openai.OpenAI(base_url=...)，兼容 OpenAI、DeepSeek 等接口。
+   - core/oj_core.py 同时支持 OpenAI 兼容请求和 Gemini 风格请求。
+   - stream=True 返回增量内容。
+
+7. Prompt 工程
+   - chat.py system prompt 要求仅依据检索上下文，并声明文档内容不是系统指令，降低提示注入风险。
+   - oj_core.build_prompt() 按题目和目标语言构造只输出代码的请求。
+
+
+十、文本处理、搜索和数学
+------------------------
+
+1. re 正则表达式
+   - document_parser/processor：Markdown 标题、编号标题、Marker 页分隔。
+   - processor：中英文 BM25 token。
+   - library：去标点和搜索归一化。
+   - oj_core：从限频消息提取等待秒数、移除 Markdown code fence。
+
+2. unicodedata.normalize
+   - processor 和 library 对全角/兼容字符做 NFKC 标准化，提高中文和英文模糊匹配一致性。
+
+3. difflib.SequenceMatcher
+   - library._fuzzy_match_score() 计算查询与候选名称的近似匹配比例。
+
+4. 字符 bigram
+   - library._character_bigrams() 生成连续二元字符集合，改善中文无空格模糊搜索。
+
+5. collections.Counter
+   - processor 的 BM25 词频/文档频率统计。
+
+6. math
+   - processor：BM25 对数、余弦模长、Sigmoid。
+   - campus_core：经纬度局部投影、距离、双圆交点和雷达签到位置估算。
+
+
+十一、可靠性与安全工程
+----------------------
+
+1. 白名单更新字段
+   - db.update_file_ingestion() 拒绝未知字段，防止动态 SQL 列名被滥用。
+
+2. 文件路径约束
+   - library._resolve_library_file() 和 rag._resolve_file_path() 确认文件位于数据/上传目录。
+
+3. 输出清理
+   - HTML 解析前移除 script/style/iframe 等节点。
+   - 前端 Markdown 关闭原生 HTML，避免资料内容通过 v-html 执行脚本。
+
+4. 资源限制
+   - 上传 100 MiB、网页 10 MiB、Office 解压 300 MiB、压缩条目和压缩比上限。
+   - 外部引擎、pip、模型下载、探针均有独立超时。
+
+5. 心跳
+   - 子进程长时间无输出时每 5 秒产生进度消息，用户能区分“仍在运行”和“完全卡死”。
+
+6. finally 清理
+   - 数据库连接、临时文件、外部引擎输出目录在 finally 中回收。
+
+7. 应用启动恢复
+   - parsing/indexing 状态遗留记录在启动时转 failed 并清向量。
+
+
+十二、Python 工程化与依赖
+------------------------
+
+1. requirements.txt
+   - 使用兼容范围而非完全无约束版本，如 fastapi>=0.115,<1。
+   - 分类列出 Web、RAG/PDF、原生文档解析依赖。
+
+2. 直接依赖用途
+   - fastapi：API 框架。
+   - uvicorn[standard]：ASGI 服务。
+   - python-multipart：文件表单解析。
+   - httpx：异步网页导入。
+   - requests：校园/OJ/部分模型请求。
+   - openai：聊天模型流式 SDK。
+   - xmulogin：统一认证。
+   - chromadb：向量库。
+   - sentence-transformers：embedding/reranker。
+   - PyMuPDF：PDF。
+   - python-docx：Word。
+   - python-pptx：PowerPoint。
+   - beautifulsoup4：HTML。
+   - pycryptodome：当前 requirements 声明，但项目自有 Python 源码没有直接 import，可能是校园依赖或遗留依赖。
+
+3. 可选依赖
+   - marker-pdf[full]、mineru[pipeline] 由 engine_init.py 动态 pip 安装。
+   - GPU PyTorch/torchvision 根据硬件验证按需安装，避免基础安装包绑定单一显卡环境。
+
+4. 私有嵌入式 Python
+   - desktop/scripts/build-python-runtime.ps1 下载 Python 3.13.14 embedded。
+   - 修改 python*._pth 启用 site 和 Lib/site-packages。
+   - 执行 get-pip、安装 requirements、下载 BGE、做离线 import 验证、生成 tar。
+
+5. 环境变量配置
+   - JIAYUAN_DATA_DIR、JIAYUAN_MODEL_DIR：数据/模型位置。
+   - JIAYUAN_PORT、JIAYUAN_RELOAD：服务端口和热重载。
+   - HF_HOME、MODELSCOPE_CACHE、MINERU_TOOLS_CONFIG_JSON：模型/引擎缓存。
+   - RAG_EMBEDDING_MODEL、RAG_RERANKER_MODEL、RAG_MIN_RELEVANCE 等：检索参数。
+
+
+十三、当前 Python 实现的改进提醒
+------------------------------
+
+1. campus_task.py 的本机绝对路径应删除或改成 shutil.which/配置；当前文件未被主流程调用。
+2. campus_config 密码应考虑 Windows Credential Manager、DPAPI 或至少应用层加密，而不是 SQLite 明文。
+3. OJ HTTPS 应恢复证书验证，或只信任固定证书/CA，不应全局 suppress warning。
+4. FastAPI startup 的 on_event 已提示弃用，可迁移到 lifespan context manager。
+5. 建议增加 pytest：状态机、ZIP bomb 校验、SSRF 地址分类、切片元数据、where 过滤、BM25/MMR 和失败补偿。
+6. 建议为外部引擎定义稳定 Adapter/Protocol，减少 processor 对 engine_init 私有下划线函数的引用。
+

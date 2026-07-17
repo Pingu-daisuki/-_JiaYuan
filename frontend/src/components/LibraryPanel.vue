@@ -1,7 +1,10 @@
 <template>
   <div class="library-panel">
     <div class="header">
-      <h3>📚 知识文库</h3>
+      <div class="header-copy">
+        <h3>📚 我的文库 </h3>
+        <p class="subtitle">为您分虑 愿您无忧</p>
+      </div>
       <el-button type="primary" size="small" plain @click="openFolderDialog">
         <el-icon><FolderAdd /></el-icon> 新建文件夹
       </el-button>
@@ -11,7 +14,7 @@
       <el-input
         v-model="searchQuery"
         clearable
-        placeholder="模糊搜索课程或文件，例如：电路原里"
+        placeholder="模糊搜索课程或文件，例如：电路原理"
         @input="scheduleSearch"
         @clear="resetSearch"
         @keyup.enter="searchLibrary"
@@ -179,7 +182,10 @@
       <el-tree-select
         v-model="targetMoveFolderId"
         :data="treeData"
+        node-key="value"
         check-strictly
+        default-expand-all
+        :render-after-expand="false"
         placeholder="请选择目标分类"
         style="width: 100%"
       />
@@ -199,6 +205,8 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { FolderAdd, Folder, Document, Delete, Setting, Edit, Search } from '@element-plus/icons-vue' // ✨ 导入 Edit 图标
 import { ElMessage, ElMessageBox } from 'element-plus' // ✨ 导入 MessageBox 用于重命名输入框
+import { buildFolderTree } from '../store/folderTree'
+import { apiFetch, apiJson, apiUrl } from '../api/client'
 
 // --- 核心状态 ---
 const allFolders = ref([]) 
@@ -259,32 +267,13 @@ const formatUnitMetric = (file) => {
 }
 
 // --- 数据获取与处理 ---
-const buildTree = (items) => {
-  const root = [{ id: 0, label: '根目录', value: 0, children: [] }];
-  const lookup = {};
-  items.forEach(item => {
-    lookup[item.id] = { id: item.id, label: item.course_name, value: item.id, children: [] };
-  });
-  items.forEach(item => {
-    if (item.parent_id && lookup[item.parent_id]) {
-      lookup[item.parent_id].children.push(lookup[item.id]);
-    } else {
-      root.push(lookup[item.id]);
-    }
-  });
-  return root;
-}
-
 const fetchFolders = async () => {
-  const res = await fetch('http://127.0.0.1:8000/api/library/folders')
-  allFolders.value = await res.json()
-  treeData.value = buildTree(allFolders.value)
-  localStorage.setItem('rag_library_tree', JSON.stringify(treeData.value))
+  allFolders.value = await apiJson('/api/library/folders')
+  treeData.value = buildFolderTree(allFolders.value)
 }
 
 const fetchFiles = async (folderId) => {
-  const res = await fetch(`http://127.0.0.1:8000/api/library/files/${folderId}`)
-  files.value = await res.json()
+  files.value = await apiJson(`/api/library/files/${folderId}`)
 }
 
 const resetSearch = () => {
@@ -307,14 +296,7 @@ const searchLibrary = async () => {
   const requestVersion = ++searchRequestVersion
   searching.value = true
   try {
-    const res = await fetch(
-      `http://127.0.0.1:8000/api/library/search?q=${encodeURIComponent(query)}&limit=30`
-    )
-    if (!res.ok) {
-      const error = await res.json().catch(() => ({}))
-      throw new Error(error.detail || `搜索失败（HTTP ${res.status}）`)
-    }
-    const data = await res.json()
+    const data = await apiJson(`/api/library/search?q=${encodeURIComponent(query)}&limit=30`)
     if (requestVersion === searchRequestVersion && query === searchQuery.value.trim()) {
       searchResults.value = data.results || []
     }
@@ -382,7 +364,7 @@ const promptRenameFolder = (folder) => {
   }).then(async ({ value }) => {
     if (!value.trim() || value === folder.course_name) return;
     
-    await fetch(`http://127.0.0.1:8000/api/library/folders/${folder.id}`, {
+    await apiJson(`/api/library/folders/${folder.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ new_name: value })
@@ -394,7 +376,7 @@ const promptRenameFolder = (folder) => {
 }
 
 const deleteFolder = async (folderId) => {
-  const res = await fetch(`http://127.0.0.1:8000/api/library/folders/${folderId}`, { method: 'DELETE' });
+  const res = await apiFetch(`/api/library/folders/${folderId}`, { method: 'DELETE' });
   if (res.ok) {
     ElMessage.success('文件夹已删除，内部文件已退回上层');
     await fetchFolders();
@@ -410,11 +392,16 @@ const openFolderDialog = () => {
 
 const submitNewFolder = async () => {
   if (!newFolderName.value.trim()) return
-  await fetch('http://127.0.0.1:8000/api/library/folders', {
+  const response = await apiFetch('/api/library/folders', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ course_name: newFolderName.value, parent_id: currentFolderId.value })
   })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    ElMessage.error(data.detail || `文件夹创建失败（HTTP ${response.status}）`)
+    return
+  }
   ElMessage.success('文件夹创建成功')
   folderDialogVisible.value = false
   await fetchFolders()
@@ -427,18 +414,23 @@ const openMoveDialog = (file) => {
 }
 
 const submitMoveFile = async () => {
-  await fetch(`http://127.0.0.1:8000/api/library/files/${currentMoveFile.value.id}/move`, {
+  const response = await apiFetch(`/api/library/files/${currentMoveFile.value.id}/move`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ course_id: targetMoveFolderId.value })
   })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    ElMessage.error(data.detail || `文件移动失败（HTTP ${response.status}）`)
+    return
+  }
   ElMessage.success('文件位置已更新')
   moveDialogVisible.value = false
   fetchFiles(currentFolderId.value)
 }
 
 const deleteFile = async (fileId) => {
-  const res = await fetch(`http://127.0.0.1:8000/api/library/files/${fileId}`, { method: 'DELETE' })
+  const res = await apiFetch(`/api/library/files/${fileId}`, { method: 'DELETE' })
   if (res.ok) {
     ElMessage.success('课件及向量记忆已删除')
     fetchFiles(currentFolderId.value)
@@ -451,7 +443,7 @@ const openDocument = async (file) => {
   }
   if (['markdown', 'html'].includes(file.document_type)) {
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/library/documents/${file.id}/preview`)
+      const response = await apiFetch(`/api/library/documents/${file.id}/preview`)
       const data = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(data.detail || `预览失败（HTTP ${response.status}）`)
       previewTitle.value = data.file_name || file.file_name
@@ -462,7 +454,7 @@ const openDocument = async (file) => {
     }
     return
   }
-  const fileUrl = `http://127.0.0.1:8000/api/library/documents/${file.id}/content`
+  const fileUrl = apiUrl(`/api/library/documents/${file.id}/content`)
   window.open(fileUrl, '_blank', 'noopener,noreferrer')
 }
 
@@ -479,7 +471,9 @@ onBeforeUnmount(() => {
 <style scoped>
 .library-panel { width: 100%; height: 100%; display: flex; flex-direction: column; background: #ffffff; border-right: 1px solid #ebeef5; }
 .header { padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ebeef5; }
+.header-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
 .header h3 { margin: 0; font-size: 16px; color: #303133; }
+.header .subtitle { margin: 0; color: #909399; font-size: 13px; font-weight: 400; line-height: 1.4; white-space: nowrap; }
 
 .search-container { padding: 12px 20px 9px; border-bottom: 1px solid #ebeef5; }
 .search-hint { display: block; margin-top: 5px; color: #a0a4ac; font-size: 11px; }

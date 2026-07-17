@@ -52,6 +52,13 @@ $env:HF_HOME = $modelRoot
 & $pythonExe -c "from huggingface_hub import snapshot_download; snapshot_download('BAAI/bge-small-zh-v1.5')"
 if ($LASTEXITCODE -ne 0) { throw 'Base embedding model download failed.' }
 
+# Hugging Face Xet 会在模型下载目录旁生成带构建时间和进程信息的日志；
+# 它不参与离线推理，也不应进入可分发安装包。
+$xetCache = Join-Path $modelRoot 'xet'
+if (Test-Path -LiteralPath $xetCache) {
+  Remove-Item -LiteralPath $xetCache -Recurse -Force
+}
+
 $manifest = [ordered]@{
   runtimeVersion = "python-$PythonVersion-requirements-v2"
   pythonVersion = $PythonVersion
